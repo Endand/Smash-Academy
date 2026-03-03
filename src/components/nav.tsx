@@ -40,7 +40,7 @@ export function Nav() {
           theme === "light" ? "0 1px 3px rgba(45,41,38,0.06)" : "none",
       }}
     >
-      <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+      <div className="w-full px-6 md:px-10 lg:px-16 h-14 flex items-center justify-between">
         <div className="flex items-center gap-8">
           <Link
             href="/"
