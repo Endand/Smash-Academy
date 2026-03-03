@@ -56,16 +56,16 @@ export function Nav() {
               Home
             </Link>
             <Link
-              href="/curriculum"
-              className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-            >
-              Curriculum
-            </Link>
-            <Link
               href="/about"
               className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
             >
               About
+            </Link>
+            <Link
+              href="/curriculum"
+              className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+            >
+              Curriculum
             </Link>
           </div>
         </div>
