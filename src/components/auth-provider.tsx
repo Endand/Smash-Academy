@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
@@ -31,8 +30,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
-  const pathname = usePathname();
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -90,20 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Client-side redirect: logged in, no profile, not on setup page
-  useEffect(() => {
-    if (
-      !loading &&
-      user &&
-      !profile &&
-      pathname !== "/setup-username" &&
-      !pathname.startsWith("/auth/") &&
-      pathname !== "/login"
-    ) {
-      console.log("[auth] no profile, redirecting to /setup-username");
-      window.location.href = "/setup-username";
-    }
-  }, [loading, user, profile, pathname]);
+  // No client-side redirect — username setup is handled inline on the homepage
 
   return (
     <AuthContext.Provider value={{ user, profile, loading }}>
