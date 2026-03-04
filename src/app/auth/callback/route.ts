@@ -16,15 +16,21 @@ export async function GET(request: Request) {
       } = await supabase.auth.getUser();
 
       if (user) {
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from("profiles")
           .select("id")
           .eq("id", user.id)
-          .single();
+          .maybeSingle();
 
+        // No profile — redirect to setup
         if (!profile) {
           return NextResponse.redirect(`${origin}/setup-username`);
         }
+      }
+
+      // No user found after exchange — still redirect to setup as fallback
+      if (!user) {
+        return NextResponse.redirect(`${origin}/setup-username`);
       }
 
       return NextResponse.redirect(`${origin}${next}`);
