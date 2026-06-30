@@ -31,6 +31,7 @@ export default function SetupUsernamePage() {
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [available, setAvailable] = useState(false);
 
   // Redirect if not logged in or already has profile
   useEffect(() => {
@@ -50,6 +51,7 @@ export default function SetupUsernamePage() {
     }
 
     setChecking(true);
+    setAvailable(false);
     try {
       const supabase = createClient();
       const { data } = await withTimeout(
@@ -59,7 +61,12 @@ export default function SetupUsernamePage() {
           .eq("username", value.toLowerCase())
           .maybeSingle()
       );
-      setError(data ? "Username is already taken" : null);
+      if (data) {
+        setError("Username is already taken");
+      } else {
+        setError(null);
+        setAvailable(true);
+      }
     } catch (err) {
       console.error("[username] uniqueness check failed:", err);
       setError("Couldn't check availability. Try again.");
@@ -77,6 +84,7 @@ export default function SetupUsernamePage() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.slice(0, MAX_LENGTH);
     setUsername(value);
+    setAvailable(false);
     if (error) {
       const validationError = validateUsername(value);
       if (!validationError) {
@@ -227,12 +235,17 @@ export default function SetupUsernamePage() {
                   Checking availability...
                 </p>
               )}
+              {available && !checking && !error && (
+                <p className="font-mono text-[11px] text-[#6ba37a]">
+                  Username available
+                </p>
+              )}
             </div>
           </div>
 
           <button
             type="submit"
-            disabled={submitting || checking || !!error || username.length < MIN_LENGTH}
+            disabled={submitting || checking || !!error || !available || username.length < MIN_LENGTH}
             className="w-full px-4 py-2.5 font-mono text-[11px] uppercase tracking-widest transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
               borderRadius: "var(--radius-button)",
