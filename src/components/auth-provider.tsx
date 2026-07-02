@@ -20,17 +20,24 @@ type AuthContextType = {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
-  loading: true,
+  loading: false,
 });
 
 export function useAuth() {
   return useContext(AuthContext);
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
+interface AuthProviderProps {
+  children: React.ReactNode;
+  initialUser: User | null;
+  initialProfile: Profile | null;
+}
+
+export function AuthProvider({ children, initialUser, initialProfile }: AuthProviderProps) {
+  // Initialised from server-fetched data — no loading flash.
+  const [user, setUser] = useState<User | null>(initialUser);
+  const [profile, setProfile] = useState<Profile | null>(initialProfile);
+  const [loading, setLoading] = useState(false);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -38,13 +45,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await withTimeout(
         supabase.from("profiles").select("*").eq("id", userId).maybeSingle()
       );
-      if (error) {
-        console.error("Profile fetch error:", error);
-        return null;
-      }
+      if (error) return null;
       return data as Profile | null;
-    } catch (e) {
-      console.error("Profile fetch exception:", e);
+    } catch {
       return null;
     }
   };
@@ -52,34 +55,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const supabase = createClient();
 
-    // onAuthStateChange fires INITIAL_SESSION immediately from the local
-    // cached session (no network call), so we don't also call getUser()
-    // which makes a redundant round-trip and doubles the cold-start wait.
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
+
       if (!currentUser) {
         setProfile(null);
-        setLoading(false);
         return;
       }
-      // TOKEN_REFRESHED is background credential rotation — user and profile
-      // haven't changed, skip re-fetch to avoid losing the admin badge.
-      if (event === "TOKEN_REFRESHED") {
-        setLoading(false);
+
+      // INITIAL_SESSION fires on mount with the same session already loaded
+      // from the server — skip re-fetching profile we already have.
+      // TOKEN_REFRESHED is background credential rotation — profile unchanged.
+      if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
         return;
       }
+
+      // SIGNED_IN (OAuth redirect, etc.) — fetch the profile for the new user.
       const prof = await fetchProfile(currentUser.id);
       if (prof !== null) setProfile(prof);
-      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
-
-  // No client-side redirect — username setup is handled inline on the homepage
 
   return (
     <AuthContext.Provider value={{ user, profile, loading }}>

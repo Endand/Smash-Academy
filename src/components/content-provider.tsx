@@ -19,35 +19,20 @@ export function useContentContext(): ContentContextValue {
   return useContext(ContentContext);
 }
 
-export function ContentProvider({ children }: { children: React.ReactNode }) {
-  const [content, setContent] = useState<ContentMap>({});
+interface ContentProviderProps {
+  children: React.ReactNode;
+  initialContent: Record<string, string>;
+}
+
+export function ContentProvider({ children, initialContent }: ContentProviderProps) {
+  // Initialised from server-fetched data — no loading flash or fallback flicker.
+  const [content, setContent] = useState<ContentMap>(initialContent);
 
   useEffect(() => {
     const supabase = createClient();
 
-    // Initial load — retry once if the first attempt times out (Supabase
-    // free-tier cold starts can take longer than a single timeout window).
-    const loadContent = async () => {
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          const { data, error } = await withTimeout(
-            supabase.from("site_content").select("key, value"),
-            30000
-          );
-          if (error) throw error;
-          if (data && data.length > 0) {
-            setContent(Object.fromEntries(data.map((r) => [r.key, r.value])));
-          }
-          return;
-        } catch (err) {
-          console.warn(`[content] load attempt ${attempt} failed:`, err);
-          if (attempt < 2) await new Promise((r) => setTimeout(r, 3000));
-        }
-      }
-    };
-    loadContent();
-
-    // Real-time: any INSERT or UPDATE propagates immediately to all clients
+    // No initial client-side load needed — data came from the server.
+    // Subscribe to real-time so admin edits propagate instantly to all clients.
     const channel = supabase
       .channel("site_content_changes")
       .on(
@@ -67,7 +52,6 @@ export function ContentProvider({ children }: { children: React.ReactNode }) {
 
   const updateContent = useCallback(async (key: string, value: string) => {
     const supabase = createClient();
-    // Optimistic local update so the editing user sees it instantly
     setContent((prev) => ({ ...prev, [key]: value }));
     try {
       const { data: { user } } = await supabase.auth.getUser();

@@ -3,6 +3,8 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/components/auth-provider";
 import { ContentProvider } from "@/components/content-provider";
+import { createClient } from "@/lib/supabase/server";
+import type { Profile } from "@/components/auth-provider";
 import "./globals.css";
 
 const inter = Inter({
@@ -24,17 +26,42 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = await createClient();
+
+  // Fetch auth and content in parallel — this runs server-side so data is
+  // baked into the initial HTML with no client-side loading flash.
+  const [{ data: { user } }, { data: contentRows }] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("site_content").select("key, value"),
+  ]);
+
+  let initialProfile: Profile | null = null;
+  if (user) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+    initialProfile = data as Profile | null;
+  }
+
+  const initialContent: Record<string, string> = contentRows
+    ? Object.fromEntries(contentRows.map((r: { key: string; value: string }) => [r.key, r.value]))
+    : {};
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}>
         <ThemeProvider>
-          <AuthProvider>
-            <ContentProvider>{children}</ContentProvider>
+          <AuthProvider initialUser={user ?? null} initialProfile={initialProfile}>
+            <ContentProvider initialContent={initialContent}>
+              {children}
+            </ContentProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>
