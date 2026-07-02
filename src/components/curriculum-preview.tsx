@@ -44,7 +44,7 @@ export function CurriculumPreview() {
             const Icon = course.icon;
             return (
               <div
-                key={course.title}
+                key={course.titleKey}
                 className="p-6 rounded-[var(--radius-card)] bg-[var(--surface)] border border-[var(--border-color)] flex flex-col gap-4"
                 style={{
                   boxShadow: theme === "light" ? "0 4px 16px rgba(45,41,38,0.08)" : "none",
