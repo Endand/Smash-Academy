@@ -120,12 +120,13 @@ export function Nav() {
                 </span>
               )}
               {profile?.is_admin && (
-                <span
-                  className="hidden sm:inline font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-tag)]"
+                <Link
+                  href="/admin"
+                  className="hidden sm:inline font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-tag)] transition-colors"
                   style={{ color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}
                 >
                   Admin
-                </span>
+                </Link>
               )}
               <button
                 onClick={handleSignOut}
