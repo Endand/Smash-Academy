@@ -185,10 +185,7 @@ export function LessonContent({ lesson, prev, next }: Props) {
   const deleteResource = (idx: number) =>
     updateContent(`${lk}_res${idx}_deleted`, "1");
 
-  // ── Derived display flags ─────────────────────────────────────────────────
-  const showAssignment = isAdmin || assignItems.length > 0;
-  const showKC = isAdmin || kcItems.length > 0;
-  const showResources = isAdmin || resItems.length > 0;
+  // ── Derived values ────────────────────────────────────────────────────────
   const prevWithContent = prev?.content ? prev : null;
   const nextWithContent = next?.content ? next : null;
   const titleValue = content[`${lk}_title`] ?? lesson.titleFallback;
@@ -304,44 +301,50 @@ export function LessonContent({ lesson, prev, next }: Props) {
       </div>
 
       {/* ── Assignment ──────────────────────────────────────── */}
-      {showAssignment && (
-        <div className="mb-14">
-          <SectionLabel label="Assignment" />
-          <Editable
-            as="p"
-            contentKey={`${lk}_assign_desc`}
-            fallback={
-              d.assignment?.description ?? "Before moving on, complete the following tasks."
-            }
-            className="text-[14px] leading-relaxed mb-4"
-            style={{ color: "var(--text-muted)" }}
-          />
-          <ul className="flex flex-col gap-3">
-            {assignItems.map(({ i, fallback }) => (
-              <li key={i} className="group flex items-start gap-3 text-[14px]">
-                <span
-                  className="shrink-0 mt-[7px] w-1.5 h-1.5 rounded-full"
-                  style={{ background: "var(--accent-medium)" }}
-                />
-                <Editable
-                  as="span"
-                  contentKey={`${lk}_assign_${i}`}
-                  fallback={fallback}
-                  className="flex-1 leading-relaxed"
-                  style={{ color: "var(--text-muted)" }}
-                />
-                {isAdmin && <RemoveBtn onClick={() => deleteAssignItem(i)} title="Remove task" />}
-              </li>
-            ))}
-          </ul>
-          {isAdmin && <AddBtn label="Add Task" onClick={addAssignItem} />}
-        </div>
-      )}
+      <div className="mb-14">
+        <SectionLabel label="Assignment" />
+        {assignItems.length > 0 ? (
+          <>
+            <Editable
+              as="p"
+              contentKey={`${lk}_assign_desc`}
+              fallback={
+                d.assignment?.description ?? "Before moving on, complete the following tasks."
+              }
+              className="text-[14px] leading-relaxed mb-4"
+              style={{ color: "var(--text-muted)" }}
+            />
+            <ul className="flex flex-col gap-3">
+              {assignItems.map(({ i, fallback }) => (
+                <li key={i} className="group flex items-start gap-3 text-[14px]">
+                  <span
+                    className="shrink-0 mt-[7px] w-1.5 h-1.5 rounded-full"
+                    style={{ background: "var(--accent-medium)" }}
+                  />
+                  <Editable
+                    as="span"
+                    contentKey={`${lk}_assign_${i}`}
+                    fallback={fallback}
+                    className="flex-1 leading-relaxed"
+                    style={{ color: "var(--text-muted)" }}
+                  />
+                  {isAdmin && <RemoveBtn onClick={() => deleteAssignItem(i)} title="Remove task" />}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="text-[13px] italic" style={{ color: "var(--text-muted)", opacity: 0.5 }}>
+            There is no assignment for this lesson.
+          </p>
+        )}
+        {isAdmin && <AddBtn label="Add Task" onClick={addAssignItem} />}
+      </div>
 
       {/* ── Knowledge Check ─────────────────────────────────── */}
-      {showKC && (
-        <div className="mb-14">
-          <SectionLabel label="Knowledge Check" />
+      <div className="mb-14">
+        <SectionLabel label="Knowledge Check" />
+        {kcItems.length > 0 ? (
           <div className="flex flex-col gap-2">
             {kcItems.map(({ i, defQ, defA }, displayIdx) => (
               <div key={i} className="group relative">
@@ -367,11 +370,7 @@ export function LessonContent({ lesson, prev, next }: Props) {
                     >
                       {String(displayIdx + 1).padStart(2, "0")}
                     </span>
-                    <Editable
-                      as="span"
-                      contentKey={`${lk}_kc${i}_q`}
-                      fallback={defQ}
-                    />
+                    <Editable as="span" contentKey={`${lk}_kc${i}_q`} fallback={defQ} />
                   </summary>
                   <div
                     className="px-4 py-3.5 text-[13px] leading-relaxed"
@@ -381,24 +380,24 @@ export function LessonContent({ lesson, prev, next }: Props) {
                       color: "var(--text-muted)",
                     }}
                   >
-                    <Editable
-                      as="span"
-                      contentKey={`${lk}_kc${i}_a`}
-                      fallback={defA}
-                    />
+                    <Editable as="span" contentKey={`${lk}_kc${i}_a`} fallback={defA} />
                   </div>
                 </details>
               </div>
             ))}
           </div>
-          {isAdmin && <AddBtn label="Add Question" onClick={addKCItem} />}
-        </div>
-      )}
+        ) : (
+          <p className="text-[13px] italic" style={{ color: "var(--text-muted)", opacity: 0.5 }}>
+            There is no knowledge check for this lesson.
+          </p>
+        )}
+        {isAdmin && <AddBtn label="Add Question" onClick={addKCItem} />}
+      </div>
 
       {/* ── Additional Resources ────────────────────────────── */}
-      {showResources && (
-        <div className="mb-14">
-          <SectionLabel label="Additional Resources" />
+      <div className="mb-14">
+        <SectionLabel label="Additional Resources" />
+        {resItems.length > 0 ? (
           <ul className="flex flex-col gap-3">
             {resItems.map(({ i, defTitle, defUrl, defDesc }) => {
               const url = content[`${lk}_res${i}_url`] ?? defUrl;
@@ -429,7 +428,6 @@ export function LessonContent({ lesson, prev, next }: Props) {
                       fallback={defDesc}
                       style={{ color: "var(--text-muted)" }}
                     />
-                    {/* URL field only shown for admin-added resources */}
                     {isAdmin && isNew && (
                       <div className="mt-1 flex items-center gap-1.5">
                         <span
@@ -455,9 +453,13 @@ export function LessonContent({ lesson, prev, next }: Props) {
               );
             })}
           </ul>
-          {isAdmin && <AddBtn label="Add Resource" onClick={addResource} />}
-        </div>
-      )}
+        ) : (
+          <p className="text-[13px] italic" style={{ color: "var(--text-muted)", opacity: 0.5 }}>
+            There are no additional resources for this lesson.
+          </p>
+        )}
+        {isAdmin && <AddBtn label="Add Resource" onClick={addResource} />}
+      </div>
 
       {/* Prev / Next navigation */}
       <div
