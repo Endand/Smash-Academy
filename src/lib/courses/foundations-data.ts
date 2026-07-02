@@ -7,6 +7,10 @@ export interface LessonContent {
     bullets?: string[];
     note?: string;
   }>;
+  assignment?: {
+    description: string;
+    items: string[];
+  };
   knowledgeCheck: Array<{ question: string; answer: string }>;
   resources?: Array<{ title: string; url: string; description: string }>;
 }
@@ -75,6 +79,14 @@ export const FOUNDATIONS_SECTIONS: CourseSectionDef[] = [
               ],
             },
           ],
+          assignment: {
+            description: "Before moving on, make sure you've done the following:",
+            items: [
+              "Read this entire lesson a second time — you'll notice something you missed on the first pass.",
+              "Decide which character you want to mod first. Write it down somewhere.",
+              "Bookmark the Foundations course page so you can find your place easily.",
+            ],
+          },
           knowledgeCheck: [
             {
               question: "What is the difference between a lesson and a project?",
