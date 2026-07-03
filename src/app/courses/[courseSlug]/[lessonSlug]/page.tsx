@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getStaticLessonKey } from "@/lib/courses/foundations-data";
 import { LessonSidebar } from "@/components/lesson-sidebar";
 import { LessonContent } from "@/components/lesson-content";
 import { Nav } from "@/components/nav";
@@ -34,20 +35,23 @@ export default async function LessonPage({ params }: Props) {
   }
   if (!courseId) return notFound();
 
-  // Resolve lessonKey from lessonSlug via the course's slug map
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("site_content")
-    .select("value")
-    .eq("key", `${courseId}_slug_map`)
-    .maybeSingle();
+  // Resolve lessonKey: static seed lessons first (foundations), then the course's slug map
+  let lessonKey: string | null =
+    courseId === "foundations" ? getStaticLessonKey(lessonSlug) : null;
 
-  let lessonKey: string | null = null;
-  if (data?.value) {
-    try {
-      const m: Record<string, string> = JSON.parse(data.value);
-      lessonKey = m[lessonSlug] ?? null;
-    } catch { /* invalid JSON */ }
+  if (!lessonKey) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("site_content")
+      .select("value")
+      .eq("key", `${courseId}_slug_map`)
+      .maybeSingle();
+    if (data?.value) {
+      try {
+        const m: Record<string, string> = JSON.parse(data.value);
+        lessonKey = m[lessonSlug] ?? null;
+      } catch { /* invalid JSON */ }
+    }
   }
   if (!lessonKey) return notFound();
 

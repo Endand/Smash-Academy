@@ -73,7 +73,7 @@ function tokenizeJS(code: string): Token[] {
     if (code[i]==='/' && code[i+1]==='*') { const e=code.indexOf('*/',i+2); const end=e<0?code.length:e+2; out.push({text:code.slice(i,end),color:SH.cmt}); i=end; continue; }
     if (code[i]==='`') { let j=i+1; while(j<code.length){if(code[j]==='\\'){j+=2;}else if(code[j]==='`'){j++;break;}else j++;} out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
     if (code[i]==='"'||code[i]==="'") { const q=code[i]; let j=i+1; while(j<code.length){if(code[j]==='\\'){j+=2;}else if(code[j]===q||code[j]==='\n'){if(code[j]===q)j++;break;}else j++;} out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
-    if (/[0-9]/.test(code[i])||(code[i]==='.'&&/[0-9]/.test(code[i+1]??''))) { let j=i; while(j<code.length&&/[0-9a-fA-FxXoObB_.]/.test(code[j]))j++; out.push({text:code.slice(i,j),color:SH.num}); i=j; continue; }
+    if (/[0-9]/.test(code[i])||(code[i]==='.'&&/[0-9]/.test(code[i+1]??''))) { const m=/^(?:0[xXbBoO][0-9a-fA-F_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?n?|\.\d[\d_]*(?:[eE][+-]?\d+)?)/.exec(code.slice(i)); const t=m?m[0]:code[i]; out.push({text:t,color:SH.num}); i+=t.length; continue; }
     if (/[a-zA-Z_$]/.test(code[i])) { let j=i; while(j<code.length&&/[\w$]/.test(code[j]))j++; const w=code.slice(i,j); const after=code.slice(j).trimStart(); out.push({text:w,color:JS_KW.has(w)?SH.kw:after[0]==='('?SH.fn:SH.plain}); i=j; continue; }
     out.push({text:code[i],color:SH.plain}); i++;
   }
@@ -87,7 +87,7 @@ function tokenizePy(code: string): Token[] {
     if ((code[i]==='"'||code[i]==="'") && code.slice(i,i+3)===code[i].repeat(3)) { const q=code[i].repeat(3); const e=code.indexOf(q,i+3); const j=e<0?code.length:e+3; out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
     if (code[i]==='#') { const e=code.indexOf('\n',i); const end=e<0?code.length:e; out.push({text:code.slice(i,end),color:SH.cmt}); i=end; continue; }
     if (code[i]==='"'||code[i]==="'") { const q=code[i]; let j=i+1; while(j<code.length){if(code[j]==='\\'){j+=2;}else if(code[j]===q||code[j]==='\n'){if(code[j]===q)j++;break;}else j++;} out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
-    if (/[0-9]/.test(code[i])) { let j=i; while(j<code.length&&/[0-9a-fA-F_xXoObB.]/.test(code[j]))j++; out.push({text:code.slice(i,j),color:SH.num}); i=j; continue; }
+    if (/[0-9]/.test(code[i])) { const m=/^(?:0[xXbBoO][0-9a-fA-F_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?[jJ]?)/.exec(code.slice(i)); const t=m?m[0]:code[i]; out.push({text:t,color:SH.num}); i+=t.length; continue; }
     if (/[a-zA-Z_]/.test(code[i])) { let j=i; while(j<code.length&&/\w/.test(code[j]))j++; const w=code.slice(i,j); const after=code.slice(j).trimStart(); out.push({text:w,color:PY_KW.has(w)?SH.kw:after[0]==='('?SH.fn:SH.plain}); i=j; continue; }
     out.push({text:code[i],color:SH.plain}); i++;
   }
@@ -102,7 +102,7 @@ function tokenizeBash(code: string): Token[] {
     if (code[i]==='"') { let j=i+1; while(j<code.length){if(code[j]==='\\'){j+=2;}else if(code[j]==='"'){j++;break;}else j++;} out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
     if (code[i]==="'") { let j=i+1; while(j<code.length&&code[j]!=="'")j++; if(j<code.length)j++; out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
     if (code[i]==='$') { let j=i+1; if(code[j]==='{'){j++;while(j<code.length&&code[j]!=='}')j++;if(j<code.length)j++;}else{while(j<code.length&&/[\w]/.test(code[j]))j++;} out.push({text:code.slice(i,j),color:SH.var}); i=j; continue; }
-    if (/[0-9]/.test(code[i])) { let j=i; while(j<code.length&&/[0-9.]/.test(code[j]))j++; out.push({text:code.slice(i,j),color:SH.num}); i=j; continue; }
+    if (/[0-9]/.test(code[i]) && (i===0 || !/[\w.]/.test(code[i-1]))) { const m=/^\d+(?:\.\d+)?/.exec(code.slice(i)); const t=m?m[0]:code[i]; out.push({text:t,color:SH.num}); i+=t.length; continue; }
     out.push({text:code[i],color:SH.plain}); i++;
   }
   return out;
@@ -129,8 +129,15 @@ function tokenizeRust(code: string): Token[] {
     if (code[i]==='/' && code[i+1]==='/') { const e=code.indexOf('\n',i); const end=e<0?code.length:e; out.push({text:code.slice(i,end),color:SH.cmt}); i=end; continue; }
     if (code[i]==='/' && code[i+1]==='*') { const e=code.indexOf('*/',i+2); const end=e<0?code.length:e+2; out.push({text:code.slice(i,end),color:SH.cmt}); i=end; continue; }
     if (code[i]==='"') { let j=i+1; while(j<code.length){if(code[j]==='\\'){j+=2;}else if(code[j]==='"'){j++;break;}else j++;} out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
-    if (code[i]==="'") { let j=i+1; while(j<code.length&&code[j]!=="'")j++; if(j<code.length)j++; out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
-    if (/[0-9]/.test(code[i])) { let j=i; while(j<code.length&&/[0-9a-fA-F_xXoOuUiI.]/.test(code[j]))j++; out.push({text:code.slice(i,j),color:SH.num}); i=j; continue; }
+    if (code[i]==="'") {
+      // Char literal ('a', '\n') vs lifetime ('static, 'a) — lifetimes have no closing quote
+      const ch=/^'(?:\\.|[^'\\])'/.exec(code.slice(i));
+      if (ch) { out.push({text:ch[0],color:SH.str}); i+=ch[0].length; continue; }
+      const lt=/^'[A-Za-z_]\w*/.exec(code.slice(i));
+      if (lt) { out.push({text:lt[0],color:SH.kw}); i+=lt[0].length; continue; }
+      out.push({text:code[i],color:SH.plain}); i++; continue;
+    }
+    if (/[0-9]/.test(code[i])) { const m=/^(?:0[xXbBoO][0-9a-fA-F_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?)(?:[iu](?:8|16|32|64|128|size)|f32|f64)?/.exec(code.slice(i)); const t=m?m[0]:code[i]; out.push({text:t,color:SH.num}); i+=t.length; continue; }
     if (/[a-zA-Z_]/.test(code[i])) { let j=i; while(j<code.length&&/[\w]/.test(code[j]))j++; const w=code.slice(i,j); const after=code.slice(j).trimStart(); out.push({text:w,color:RUST_KW.has(w)?SH.kw:after[0]==='('?SH.fn:/^[A-Z]/.test(w)?SH.fn:SH.plain}); i=j; continue; }
     out.push({text:code[i],color:SH.plain}); i++;
   }
@@ -650,8 +657,9 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
   };
   const deleteResource = (idx: number) => updateContent(`${lk}_res${idx}_deleted`, "1");
 
-  // ── "Coming Soon" gate for non-admins ────────────────────────────────────
-  if (status !== "published" && !isAdmin) {
+  // ── "Coming Soon" gate for non-admins (also covers removed courses) ──────
+  const courseDeleted = content[`course_${courseId}_deleted`] === "1";
+  if ((status !== "published" || courseDeleted) && !isAdmin) {
     return (
       <div className="max-w-2xl mx-auto px-6 md:px-10 py-20 text-center">
         <p className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] mb-4">

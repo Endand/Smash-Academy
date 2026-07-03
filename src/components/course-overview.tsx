@@ -259,8 +259,12 @@ export function CourseOverview({ courseId }: { courseId: string }) {
   const [addingSection, setAddingSection] = useState(false);
   const [newSectionName, setNewSectionName] = useState("");
 
-  const lessonCount = allLessons.filter((l) => !PROJECT_ICONS.has(content[`${l.lessonKey}_icon`] ?? l.iconFallback)).length;
-  const projectCount = allLessons.filter((l) => PROJECT_ICONS.has(content[`${l.lessonKey}_icon`] ?? l.iconFallback)).length;
+  // Drafts are hidden from non-admins, so leave them out of their counts too
+  const countableLessons = allLessons.filter(
+    (l) => isAdmin || getEffectiveStatus(l.lessonKey, l.hasStaticContent, content) !== "draft"
+  );
+  const lessonCount = countableLessons.filter((l) => !PROJECT_ICONS.has(content[`${l.lessonKey}_icon`] ?? l.iconFallback)).length;
+  const projectCount = countableLessons.length - lessonCount;
 
   const addSection = () => {
     const name = newSectionName.trim() || "New Section";
@@ -281,8 +285,9 @@ export function CourseOverview({ courseId }: { courseId: string }) {
   const removeSection = (section: LiveSection) => updateContent(`${section.sectionKey}_deleted`, "1");
   const removeLesson  = (lesson: LiveLesson)  => updateContent(`${lesson.lessonKey}_deleted`, "1");
 
-  // Non-admins see "Coming Soon" for unavailable courses
-  if (courseStatus !== "available" && !isAdmin) {
+  // Non-admins see "Coming Soon" for unavailable or removed courses
+  const isDeleted = content[`course_${courseId}_deleted`] === "1";
+  if ((courseStatus !== "available" || isDeleted) && !isAdmin) {
     return (
       <div className="max-w-2xl mx-auto px-6 py-20 text-center">
         <p className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] mb-4">Coming soon</p>
