@@ -150,7 +150,7 @@ function tokenize(code: string, lang: string): Token[] {
 function HighlightedCode({ code, lang }: { code: string; lang: string }) {
   const tokens = tokenize(code, lang);
   return (
-    <pre className="whitespace-pre-wrap break-words text-[13px] leading-relaxed p-4 overflow-x-auto" style={{ fontFamily: "var(--font-jetbrains), monospace" }}>
+    <pre className="whitespace-pre-wrap break-words text-[13px] leading-relaxed p-4 overflow-x-auto" style={{ fontFamily: "var(--font-jetbrains), monospace", color: SH.plain }}>
       {tokens.map((tok, idx) =>
         tok.color === SH.plain
           ? tok.text
@@ -297,7 +297,7 @@ function BlockRenderer({
         {/* Header bar: language label + admin lang edit */}
         <div
           className="flex items-center justify-between px-4 py-1.5 rounded-t-[var(--radius-card)]"
-          style={{ background: "#1e1f22", borderBottom: "1px solid #111214" }}
+          style={{ background: "#232428", borderBottom: "1px solid #1a1b1e" }}
         >
           {isAdmin ? (
             <Editable
@@ -314,7 +314,7 @@ function BlockRenderer({
           )}
         </div>
         {/* Code body */}
-        <div className="overflow-x-auto rounded-b-[var(--radius-card)]" style={{ background: "#2b2d31" }}>
+        <div className="overflow-x-auto rounded-b-[var(--radius-card)]" style={{ background: "#313338" }}>
           <EditableTextarea
             contentKey={`${prefix}_content`}
             fallback="// code here"
