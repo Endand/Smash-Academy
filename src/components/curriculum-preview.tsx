@@ -1,30 +1,46 @@
 "use client";
 
 import { Wrench, Swords } from "lucide-react";
+import Link from "next/link";
 import { useTheme } from "@/components/theme-provider";
 import { Editable } from "@/components/editable-text";
-import { COURSE_TITLE_KEY } from "@/lib/courses/foundations-data";
+import { useContentContext } from "@/components/content-provider";
+import {
+  getCourseKeys,
+  getCourseSlug,
+  getCourseStatus,
+  SEED_COURSE_IDS,
+} from "@/lib/courses/course-utils";
 
-const courses = [
-  {
-    icon: Wrench,
-    titleKey: COURSE_TITLE_KEY,
-    titleFallback: "Foundations",
-    descKey: "cp_foundations_desc",
-    descFallback: "Getting started with modding tools, file systems, backups, and the modding ecosystem.",
-  },
-  {
-    icon: Swords,
-    titleKey: "cp_character_title",
-    titleFallback: "Character Modding",
-    descKey: "cp_character_desc",
-    descFallback: "Hitboxes, movesets, animations, and building custom fighters from scratch.",
-  },
-];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const COURSE_ICONS: Record<string, React.ComponentType<any>> = {
+  foundations: Wrench,
+  "character-modding": Swords,
+};
+
+const FALLBACK_TITLES: Record<string, string> = {
+  foundations: "Foundations",
+  "character-modding": "Character Modding",
+};
+
+const FALLBACK_DESCS: Record<string, string> = {
+  foundations: "Getting started with modding tools, file systems, backups, and the modding ecosystem.",
+  "character-modding": "Hitboxes, movesets, animations, and building custom fighters from scratch.",
+};
+
+function parseJSON<T>(str: string | undefined, fallback: T): T {
+  if (!str) return fallback;
+  try { return JSON.parse(str) as T; }
+  catch { return fallback; }
+}
 
 export function CurriculumPreview() {
+  const { content } = useContentContext();
   const { theme } = useTheme();
   const filled = theme === "light";
+
+  const courseIds: string[] = parseJSON(content["curriculum_course_ids"], SEED_COURSE_IDS);
+  const visibleIds = courseIds.filter((id) => content[`course_${id}_deleted`] !== "1");
 
   return (
     <section className="py-24 px-6">
@@ -41,12 +57,16 @@ export function CurriculumPreview() {
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {courses.map((course) => {
-            const Icon = course.icon;
-            return (
+          {visibleIds.map((courseId) => {
+            const { titleKey, descKey } = getCourseKeys(courseId);
+            const Icon = COURSE_ICONS[courseId] ?? Wrench;
+            const status = getCourseStatus(courseId, content);
+            const slug = getCourseSlug(courseId, content);
+            const isAvailable = status === "available";
+
+            const card = (
               <div
-                key={course.titleKey}
-                className="p-6 rounded-[var(--radius-card)] bg-[var(--surface)] border border-[var(--border-color)] flex flex-col gap-4"
+                className="p-6 rounded-[var(--radius-card)] bg-[var(--surface)] border border-[var(--border-color)] flex flex-col gap-4 h-full transition-all"
                 style={{
                   boxShadow: theme === "light" ? "0 4px 16px rgba(45,41,38,0.08)" : "none",
                   borderColor: theme === "light" ? "transparent" : undefined,
@@ -58,23 +78,33 @@ export function CurriculumPreview() {
                     strokeWidth={filled ? 0 : 1.5}
                     fill={filled ? "currentColor" : "none"}
                   />
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)] px-2 py-0.5 rounded-[var(--radius-tag)] border border-[var(--border-color)]">
-                    Coming Soon
-                  </span>
+                  {!isAvailable && (
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)] px-2 py-0.5 rounded-[var(--radius-tag)] border border-[var(--border-color)]">
+                      Coming Soon
+                    </span>
+                  )}
                 </div>
                 <Editable
-                  contentKey={course.titleKey}
-                  fallback={course.titleFallback}
+                  contentKey={titleKey}
+                  fallback={FALLBACK_TITLES[courseId] ?? "Course"}
                   as="h3"
                   className="text-lg font-light text-[var(--text)]"
                 />
                 <Editable
-                  contentKey={course.descKey}
-                  fallback={course.descFallback}
+                  contentKey={descKey}
+                  fallback={FALLBACK_DESCS[courseId] ?? "Description of this course."}
                   as="p"
                   className="text-sm text-[var(--text-muted)] leading-relaxed"
                 />
               </div>
+            );
+
+            return isAvailable ? (
+              <Link key={courseId} href={`/courses/${slug}`} className="block group">
+                {card}
+              </Link>
+            ) : (
+              <div key={courseId}>{card}</div>
             );
           })}
         </div>
