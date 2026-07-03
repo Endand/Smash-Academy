@@ -691,13 +691,19 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
       </div>
 
       {/* Introduction */}
-      <Editable
-        as="p"
-        contentKey={`${lk}_intro`}
-        fallback={d?.introduction ?? ""}
-        className="leading-relaxed text-[15px] mb-12"
-        style={{ color: "var(--text-muted)" }}
-      />
+      {isAdmin ? (
+        <Editable
+          as="p"
+          contentKey={`${lk}_intro`}
+          fallback={d?.introduction ?? ""}
+          className="leading-relaxed text-[15px] mb-12"
+          style={{ color: "var(--text-muted)" }}
+        />
+      ) : (
+        <p className="leading-relaxed text-[15px] mb-12" style={{ color: "var(--text-muted)" }}>
+          {renderWithLinks(content[`${lk}_intro`] ?? (d?.introduction ?? ""))}
+        </p>
+      )}
 
       {/* ── Lesson Overview ──────────────────────────────── */}
       <div className="mb-12 px-5 pt-4 pb-5" style={{ background: "var(--surface)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)" }}>
@@ -739,6 +745,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                 {/* Original paragraphs */}
                 {Array.from({ length: paraCount }, (_, j) => {
                   if (content[`${lk}_s${i}_p${j}_deleted`] === "1") return null;
+                  const paraFallback = def?.paragraphs[j] ?? "";
                   return (
                     <div key={j} className="group/p relative">
                       {isAdmin && (
@@ -746,13 +753,19 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                           <RemoveBtn onClick={() => deleteParag(i, j)} title="Remove paragraph" />
                         </div>
                       )}
-                      <Editable
-                        as="p"
-                        contentKey={`${lk}_s${i}_p${j}`}
-                        fallback={def?.paragraphs[j] ?? ""}
-                        className="leading-relaxed text-[15px]"
-                        style={{ color: "var(--text-muted)" }}
-                      />
+                      {isAdmin ? (
+                        <Editable
+                          as="p"
+                          contentKey={`${lk}_s${i}_p${j}`}
+                          fallback={paraFallback}
+                          className="leading-relaxed text-[15px]"
+                          style={{ color: "var(--text-muted)" }}
+                        />
+                      ) : (
+                        <p className="leading-relaxed text-[15px]" style={{ color: "var(--text-muted)" }}>
+                          {renderWithLinks(content[`${lk}_s${i}_p${j}`] ?? paraFallback)}
+                        </p>
+                      )}
                     </div>
                   );
                 })}
@@ -782,7 +795,11 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                     className="px-4 py-3 text-[13px] leading-relaxed"
                     style={{ borderLeft: "3px solid var(--accent-medium)", background: "var(--surface)", color: "var(--text-muted)", borderRadius: "0 var(--radius-card) var(--radius-card) 0" }}
                   >
-                    <Editable as="span" contentKey={`${lk}_s${i}_note`} fallback={def?.note ?? ""} />
+                    {isAdmin ? (
+                      <Editable as="span" contentKey={`${lk}_s${i}_note`} fallback={def?.note ?? ""} />
+                    ) : (
+                      <span>{renderWithLinks(content[`${lk}_s${i}_note`] ?? (def?.note ?? ""))}</span>
+                    )}
                   </div>
                 </div>
               )}
