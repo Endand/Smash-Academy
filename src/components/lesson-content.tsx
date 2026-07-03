@@ -48,6 +48,118 @@ function RemoveBtn({ onClick, title = "Remove" }: { onClick: () => void; title?:
   );
 }
 
+// ── Syntax highlighting ───────────────────────────────────────────────────────
+
+const SH = {
+  kw:    "#7289da",
+  str:   "#43b581",
+  cmt:   "#72767d",
+  num:   "#faa61a",
+  fn:    "#5bc6e8",
+  var:   "#ed9c79",
+  plain: "#dcddde",
+};
+
+type Token = { text: string; color: string };
+
+const JS_KW = new Set(["break","case","catch","class","const","continue","debugger","default","delete","do","else","export","extends","false","finally","for","from","function","if","import","in","instanceof","interface","let","namespace","new","null","of","return","static","super","switch","this","throw","true","try","type","typeof","undefined","var","void","while","with","yield","async","await","abstract","declare","enum","implements","readonly","satisfies"]);
+const PY_KW = new Set(["False","None","True","and","as","assert","async","await","break","class","continue","def","del","elif","else","except","finally","for","from","global","if","import","in","is","lambda","nonlocal","not","or","pass","raise","return","try","while","with","yield"]);
+
+function tokenizeJS(code: string): Token[] {
+  const out: Token[] = [];
+  let i = 0;
+  while (i < code.length) {
+    if (code[i]==='/' && code[i+1]==='/') { const e=code.indexOf('\n',i); const end=e<0?code.length:e; out.push({text:code.slice(i,end),color:SH.cmt}); i=end; continue; }
+    if (code[i]==='/' && code[i+1]==='*') { const e=code.indexOf('*/',i+2); const end=e<0?code.length:e+2; out.push({text:code.slice(i,end),color:SH.cmt}); i=end; continue; }
+    if (code[i]==='`') { let j=i+1; while(j<code.length){if(code[j]==='\\'){j+=2;}else if(code[j]==='`'){j++;break;}else j++;} out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
+    if (code[i]==='"'||code[i]==="'") { const q=code[i]; let j=i+1; while(j<code.length){if(code[j]==='\\'){j+=2;}else if(code[j]===q||code[j]==='\n'){if(code[j]===q)j++;break;}else j++;} out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
+    if (/[0-9]/.test(code[i])||(code[i]==='.'&&/[0-9]/.test(code[i+1]??''))) { let j=i; while(j<code.length&&/[0-9a-fA-FxXoObB_.]/.test(code[j]))j++; out.push({text:code.slice(i,j),color:SH.num}); i=j; continue; }
+    if (/[a-zA-Z_$]/.test(code[i])) { let j=i; while(j<code.length&&/[\w$]/.test(code[j]))j++; const w=code.slice(i,j); const after=code.slice(j).trimStart(); out.push({text:w,color:JS_KW.has(w)?SH.kw:after[0]==='('?SH.fn:SH.plain}); i=j; continue; }
+    out.push({text:code[i],color:SH.plain}); i++;
+  }
+  return out;
+}
+
+function tokenizePy(code: string): Token[] {
+  const out: Token[] = [];
+  let i = 0;
+  while (i < code.length) {
+    if ((code[i]==='"'||code[i]==="'") && code.slice(i,i+3)===code[i].repeat(3)) { const q=code[i].repeat(3); const e=code.indexOf(q,i+3); const j=e<0?code.length:e+3; out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
+    if (code[i]==='#') { const e=code.indexOf('\n',i); const end=e<0?code.length:e; out.push({text:code.slice(i,end),color:SH.cmt}); i=end; continue; }
+    if (code[i]==='"'||code[i]==="'") { const q=code[i]; let j=i+1; while(j<code.length){if(code[j]==='\\'){j+=2;}else if(code[j]===q||code[j]==='\n'){if(code[j]===q)j++;break;}else j++;} out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
+    if (/[0-9]/.test(code[i])) { let j=i; while(j<code.length&&/[0-9a-fA-F_xXoObB.]/.test(code[j]))j++; out.push({text:code.slice(i,j),color:SH.num}); i=j; continue; }
+    if (/[a-zA-Z_]/.test(code[i])) { let j=i; while(j<code.length&&/\w/.test(code[j]))j++; const w=code.slice(i,j); const after=code.slice(j).trimStart(); out.push({text:w,color:PY_KW.has(w)?SH.kw:after[0]==='('?SH.fn:SH.plain}); i=j; continue; }
+    out.push({text:code[i],color:SH.plain}); i++;
+  }
+  return out;
+}
+
+function tokenizeBash(code: string): Token[] {
+  const out: Token[] = [];
+  let i = 0;
+  while (i < code.length) {
+    if (code[i]==='#') { const e=code.indexOf('\n',i); const end=e<0?code.length:e; out.push({text:code.slice(i,end),color:SH.cmt}); i=end; continue; }
+    if (code[i]==='"') { let j=i+1; while(j<code.length){if(code[j]==='\\'){j+=2;}else if(code[j]==='"'){j++;break;}else j++;} out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
+    if (code[i]==="'") { let j=i+1; while(j<code.length&&code[j]!=="'")j++; if(j<code.length)j++; out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
+    if (code[i]==='$') { let j=i+1; if(code[j]==='{'){j++;while(j<code.length&&code[j]!=='}')j++;if(j<code.length)j++;}else{while(j<code.length&&/[\w]/.test(code[j]))j++;} out.push({text:code.slice(i,j),color:SH.var}); i=j; continue; }
+    if (/[0-9]/.test(code[i])) { let j=i; while(j<code.length&&/[0-9.]/.test(code[j]))j++; out.push({text:code.slice(i,j),color:SH.num}); i=j; continue; }
+    out.push({text:code[i],color:SH.plain}); i++;
+  }
+  return out;
+}
+
+function tokenizeJSON(code: string): Token[] {
+  const out: Token[] = [];
+  let i = 0;
+  while (i < code.length) {
+    if (code[i]==='"') { let j=i+1; while(j<code.length){if(code[j]==='\\'){j+=2;}else if(code[j]==='"'){j++;break;}else j++;} const after=code.slice(j).trimStart(); out.push({text:code.slice(i,j),color:after[0]===':'?SH.kw:SH.str}); i=j; continue; }
+    if (/[0-9\-]/.test(code[i])) { const s=i; if(code[i]==='-')i++; if(/[0-9]/.test(code[i]??'')){while(i<code.length&&/[0-9.eE+\-]/.test(code[i]))i++; out.push({text:code.slice(s,i),color:SH.num}); continue;} i=s; }
+    if (code.slice(i,i+4)==='null'||code.slice(i,i+4)==='true'||code.slice(i,i+5)==='false') { const kw=code[i+1]==='a'?'false':code[i]==='n'?'null':'true'; out.push({text:kw,color:SH.var}); i+=kw.length; continue; }
+    out.push({text:code[i],color:SH.plain}); i++;
+  }
+  return out;
+}
+
+const RUST_KW = new Set(["as","async","await","break","const","continue","crate","dyn","else","enum","extern","false","fn","for","if","impl","in","let","loop","match","mod","move","mut","pub","ref","return","self","Self","static","struct","super","trait","true","type","union","unsafe","use","where","while","abstract","become","box","do","final","macro","override","priv","typeof","unsized","virtual","yield"]);
+
+function tokenizeRust(code: string): Token[] {
+  const out: Token[] = [];
+  let i = 0;
+  while (i < code.length) {
+    if (code[i]==='/' && code[i+1]==='/') { const e=code.indexOf('\n',i); const end=e<0?code.length:e; out.push({text:code.slice(i,end),color:SH.cmt}); i=end; continue; }
+    if (code[i]==='/' && code[i+1]==='*') { const e=code.indexOf('*/',i+2); const end=e<0?code.length:e+2; out.push({text:code.slice(i,end),color:SH.cmt}); i=end; continue; }
+    if (code[i]==='"') { let j=i+1; while(j<code.length){if(code[j]==='\\'){j+=2;}else if(code[j]==='"'){j++;break;}else j++;} out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
+    if (code[i]==="'") { let j=i+1; while(j<code.length&&code[j]!=="'")j++; if(j<code.length)j++; out.push({text:code.slice(i,j),color:SH.str}); i=j; continue; }
+    if (/[0-9]/.test(code[i])) { let j=i; while(j<code.length&&/[0-9a-fA-F_xXoOuUiI.]/.test(code[j]))j++; out.push({text:code.slice(i,j),color:SH.num}); i=j; continue; }
+    if (/[a-zA-Z_]/.test(code[i])) { let j=i; while(j<code.length&&/[\w]/.test(code[j]))j++; const w=code.slice(i,j); const after=code.slice(j).trimStart(); out.push({text:w,color:RUST_KW.has(w)?SH.kw:after[0]==='('?SH.fn:/^[A-Z]/.test(w)?SH.fn:SH.plain}); i=j; continue; }
+    out.push({text:code[i],color:SH.plain}); i++;
+  }
+  return out;
+}
+
+function tokenize(code: string, lang: string): Token[] {
+  const l = lang.toLowerCase().trim();
+  if (["js","javascript","ts","typescript","jsx","tsx"].includes(l)) return tokenizeJS(code);
+  if (["py","python"].includes(l)) return tokenizePy(code);
+  if (["sh","bash","shell","zsh"].includes(l)) return tokenizeBash(code);
+  if (["json"].includes(l)) return tokenizeJSON(code);
+  if (["rs","rust"].includes(l)) return tokenizeRust(code);
+  return [{ text: code, color: SH.plain }];
+}
+
+function HighlightedCode({ code, lang }: { code: string; lang: string }) {
+  const tokens = tokenize(code, lang);
+  return (
+    <pre className="whitespace-pre-wrap break-words text-[13px] leading-relaxed p-4 overflow-x-auto" style={{ fontFamily: "var(--font-jetbrains), monospace" }}>
+      {tokens.map((tok, idx) =>
+        tok.color === SH.plain
+          ? tok.text
+          : <span key={idx} style={{ color: tok.color }}>{tok.text}</span>
+      )}
+    </pre>
+  );
+}
+
 // ── Rich content block renderer ───────────────────────────────────────────────
 
 type BlockType = "text" | "code" | "image" | "quote";
@@ -63,12 +175,14 @@ function EditableTextarea({
   className,
   style,
   mono,
+  lang,
 }: {
   contentKey: string;
   fallback: string;
   className?: string;
   style?: React.CSSProperties;
   mono?: boolean;
+  lang?: string;
 }) {
   const { content, updateContent } = useContentContext();
   const { profile } = useAuth();
@@ -77,8 +191,11 @@ function EditableTextarea({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
-  if (!isAdmin) {
-    return (
+  // View mode: syntax-highlighted for code, plain pre for text
+  if (!isAdmin || !editing) {
+    const viewEl = lang ? (
+      <HighlightedCode code={value || fallback} lang={lang} />
+    ) : (
       <pre
         className={`whitespace-pre-wrap break-words ${className ?? ""}`}
         style={{ fontFamily: mono ? "var(--font-jetbrains), monospace" : "inherit", ...style }}
@@ -86,50 +203,47 @@ function EditableTextarea({
         {value}
       </pre>
     );
-  }
 
-  if (editing) {
+    if (!isAdmin) return viewEl;
+
+    // Admin view-mode: click to enter edit
     return (
-      <textarea
-        autoFocus
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          setEditing(false);
-          if (draft.trim() && draft !== value) updateContent(contentKey, draft);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") { setEditing(false); setDraft(value); }
-        }}
-        rows={Math.max(3, (draft.match(/\n/g)?.length ?? 0) + 2)}
-        className={`w-full resize-none bg-transparent outline-none ${className ?? ""}`}
-        style={{
-          fontFamily: mono ? "var(--font-jetbrains), monospace" : "inherit",
-          border: "1px solid var(--accent-medium)",
-          borderRadius: "var(--radius-card)",
-          padding: "0.5rem",
-          ...style,
-        }}
-      />
+      <div
+        onClick={() => { setEditing(true); setDraft(value); }}
+        className="cursor-text"
+        style={{ outline: "1px dashed transparent", borderRadius: "var(--radius-card)", transition: "outline-color 0.15s" }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.outlineColor = "var(--border-strong)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.outlineColor = "transparent"; }}
+      >
+        {viewEl}
+      </div>
     );
   }
 
+  // Admin edit mode: textarea
   return (
-    <pre
-      onClick={() => { setEditing(true); setDraft(value); }}
-      className={`whitespace-pre-wrap break-words cursor-text ${className ?? ""}`}
+    <textarea
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        setEditing(false);
+        if (draft !== value) updateContent(contentKey, draft);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") { setEditing(false); setDraft(value); }
+      }}
+      rows={Math.max(3, (draft.match(/\n/g)?.length ?? 0) + 2)}
+      className={`w-full resize-none bg-transparent outline-none ${className ?? ""}`}
       style={{
         fontFamily: mono ? "var(--font-jetbrains), monospace" : "inherit",
-        outline: "1px dashed transparent",
+        border: "1px solid var(--accent-medium)",
         borderRadius: "var(--radius-card)",
-        transition: "outline-color 0.15s",
+        padding: "0.5rem",
+        color: SH.plain,
         ...style,
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.outlineColor = "var(--border-strong)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.outlineColor = "transparent"; }}
-    >
-      {value || <span style={{ opacity: 0.3 }}>Click to edit…</span>}
-    </pre>
+    />
   );
 }
 
@@ -172,6 +286,7 @@ function BlockRenderer({
   }
 
   if (block.type === "code") {
+    const displayLang = lang || "plaintext";
     return (
       <div className="group relative">
         {isAdmin && (
@@ -179,36 +294,34 @@ function BlockRenderer({
             <RemoveBtn onClick={onRemove} title="Remove code block" />
           </div>
         )}
-        {isAdmin && (
-          <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-[9px] uppercase tracking-widest opacity-40" style={{ color: "var(--text-muted)" }}>
-              Language:
-            </span>
+        {/* Header bar: language label + admin lang edit */}
+        <div
+          className="flex items-center justify-between px-4 py-1.5 rounded-t-[var(--radius-card)]"
+          style={{ background: "#1e1f22", borderBottom: "1px solid #111214" }}
+        >
+          {isAdmin ? (
             <Editable
               as="span"
               contentKey={`${prefix}_lang`}
               fallback="plaintext"
-              className="font-mono text-[10px]"
-              style={{ color: "var(--text-muted)" }}
+              className="font-mono text-[10px] uppercase tracking-widest"
+              style={{ color: "#72767d" }}
             />
-          </div>
-        )}
-        {!isAdmin && lang && (
-          <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-[9px] uppercase tracking-widest opacity-40" style={{ color: "var(--text-muted)" }}>
-              {lang}
+          ) : (
+            <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "#72767d" }}>
+              {displayLang}
             </span>
-          </div>
-        )}
-        <div
-          className="overflow-x-auto"
-          style={{ background: "var(--surface)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)" }}
-        >
+          )}
+        </div>
+        {/* Code body */}
+        <div className="overflow-x-auto rounded-b-[var(--radius-card)]" style={{ background: "#2b2d31" }}>
           <EditableTextarea
             contentKey={`${prefix}_content`}
             fallback="// code here"
             mono
-            className="text-[13px] leading-relaxed text-[var(--text-muted)] p-4"
+            lang={displayLang}
+            className="text-[13px] leading-relaxed p-4"
+            style={{ color: SH.plain }}
           />
         </div>
       </div>

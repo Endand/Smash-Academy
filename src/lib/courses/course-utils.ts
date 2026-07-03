@@ -29,14 +29,20 @@ export function getCourseKeys(courseId: string): CourseKeys {
   };
 }
 
-// URL slug for each course (static courses have fixed slugs)
-const STATIC_SLUGS: Record<string, string> = {
-  foundations:       "foundations",
+// URL slug for each course — all courses read from content, with static defaults
+const STATIC_SLUG_DEFAULTS: Record<string, string> = {
   "character-modding": "character-modding",
 };
 
 export function getCourseSlug(courseId: string, content: Record<string, string>): string {
-  return STATIC_SLUGS[courseId] ?? content[`course_${courseId}_slug`] ?? courseId;
+  // Stored slug takes priority for all courses (allows admin to rename URL)
+  const stored = content[`course_${courseId}_slug`];
+  if (stored) return stored;
+  return STATIC_SLUG_DEFAULTS[courseId] ?? courseId;
+}
+
+export function slugFromTitle(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "course";
 }
 
 // "available" = public; "soon" = hidden from non-admins

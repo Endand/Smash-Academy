@@ -14,7 +14,7 @@ import {
   type LiveLesson,
   type LiveSection,
 } from "@/hooks/use-course-structure";
-import { getCourseKeys, getCourseSlug, getCourseStatus } from "@/lib/courses/course-utils";
+import { getCourseKeys, getCourseSlug, getCourseStatus, slugFromTitle } from "@/lib/courses/course-utils";
 
 const PROJECT_ICONS = new Set(["Wrench", "Hammer", "Package", "Target", "Trophy"]);
 const LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
@@ -193,6 +193,58 @@ function AddLessonBtn({ courseId, section }: { courseId: string; section: LiveSe
   );
 }
 
+// ── Slug row (admin only) ─────────────────────────────────────────────────────
+
+function SlugRow({ courseId, courseSlug }: { courseId: string; courseSlug: string }) {
+  const { content, updateContent } = useContentContext();
+  const { titleKey } = getCourseKeys(courseId);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(courseSlug);
+
+  const applySlug = (slug: string) => {
+    const clean = slug.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || courseSlug;
+    updateContent(`course_${courseId}_slug`, clean);
+    // Add new slug → courseId to curriculum_slug_map so the dynamic route resolves it
+    const existing: Record<string, string> = (() => {
+      try { return JSON.parse(content["curriculum_slug_map"] ?? "{}"); } catch { return {}; }
+    })();
+    updateContent("curriculum_slug_map", JSON.stringify({ ...existing, [clean]: courseId }));
+    setEditing(false);
+  };
+
+  const syncFromTitle = () => {
+    const title = content[titleKey] ?? "course";
+    applySlug(slugFromTitle(title));
+  };
+
+  return (
+    <div className="mt-3 flex items-center gap-2 font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>
+      <span className="opacity-50">URL:</span>
+      {editing ? (
+        <>
+          <span className="opacity-40">/courses/</span>
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") applySlug(draft); if (e.key === "Escape") setEditing(false); }}
+            className="px-2 py-0.5 bg-transparent outline-none border-b w-40"
+            style={{ borderColor: "var(--accent-medium)", color: "var(--text)" }}
+          />
+          <button onClick={() => applySlug(draft)} className="px-2 py-0.5 cursor-pointer" style={{ color: "var(--accent-medium)" }}>Save</button>
+          <button onClick={() => setEditing(false)} className="px-2 py-0.5 cursor-pointer opacity-50">Cancel</button>
+        </>
+      ) : (
+        <>
+          <span>/courses/<span style={{ color: "var(--text)" }}>{courseSlug}</span></span>
+          <button onClick={() => { setDraft(courseSlug); setEditing(true); }} className="px-2 py-0.5 cursor-pointer hover:opacity-100 opacity-40 transition-opacity">Edit</button>
+          <button onClick={syncFromTitle} className="px-2 py-0.5 cursor-pointer hover:opacity-100 opacity-40 transition-opacity">Sync from title</button>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function CourseOverview({ courseId }: { courseId: string }) {
@@ -275,6 +327,9 @@ export function CourseOverview({ courseId }: { courseId: string }) {
           <LevelBadge courseId={courseId} />
         </div>
         <Editable contentKey={descKey} fallback="Description of this course." as="p" className="text-[var(--text-muted)] leading-relaxed" />
+        {isAdmin && (
+          <SlugRow courseId={courseId} courseSlug={courseSlug} />
+        )}
         <div className="mt-5 font-mono text-[11px] flex items-center gap-3" style={{ color: "var(--text-muted)" }}>
           <span>{lessonCount} lessons</span>
           <span style={{ opacity: 0.4 }}>·</span>
