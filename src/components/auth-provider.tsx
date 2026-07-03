@@ -9,6 +9,7 @@ export type Profile = {
   username: string;
   created_at: string;
   is_admin: boolean;
+  role: string | null;
 };
 
 type AuthContextType = {

@@ -1,6 +1,7 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getStaticLessonKey } from "@/lib/courses/foundations-data";
+import { getStaticLessonKey, getStaticLesson } from "@/lib/courses/foundations-data";
 import { LessonSidebar } from "@/components/lesson-sidebar";
 import { LessonContent } from "@/components/lesson-content";
 import { Nav } from "@/components/nav";
@@ -10,28 +11,52 @@ interface Props {
   params: Promise<{ slug: string }>;
 }
 
-export default async function LessonPage({ params }: Props) {
-  const { slug } = await params;
-
+async function resolveLessonKey(slug: string): Promise<string | null> {
   // Static lesson lookup (fast, in-memory)
-  let lessonKey = getStaticLessonKey(slug);
+  const staticKey = getStaticLessonKey(slug);
+  if (staticKey) return staticKey;
 
   // Dynamic lesson lookup (Supabase — only when static lookup misses)
-  if (!lessonKey) {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("site_content")
-      .select("value")
-      .eq("key", "foundations_slug_map")
-      .maybeSingle();
-    if (data?.value) {
-      try {
-        const slugMap: Record<string, string> = JSON.parse(data.value);
-        lessonKey = slugMap[slug] ?? null;
-      } catch { /* invalid JSON */ }
-    }
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("site_content")
+    .select("value")
+    .eq("key", "foundations_slug_map")
+    .maybeSingle();
+  if (data?.value) {
+    try {
+      const slugMap: Record<string, string> = JSON.parse(data.value);
+      return slugMap[slug] ?? null;
+    } catch { /* invalid JSON */ }
   }
+  return null;
+}
 
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params;
+  const lessonKey = await resolveLessonKey(slug);
+  if (!lessonKey) return {};
+
+  const staticLesson = getStaticLesson(lessonKey);
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("site_content")
+    .select("key, value")
+    .in("key", [`${lessonKey}_title`, `${lessonKey}_intro`]);
+  const map = Object.fromEntries((data ?? []).map((r: { key: string; value: string }) => [r.key, r.value]));
+
+  const title = map[`${lessonKey}_title`] ?? staticLesson?.titleFallback;
+  const rawDesc = map[`${lessonKey}_intro`] ?? staticLesson?.content?.introduction ?? "";
+  const description = rawDesc.length > 160 ? `${rawDesc.slice(0, 157)}…` : rawDesc;
+  return {
+    ...(title ? { title: `${title} — Smash Modding Academy` } : {}),
+    ...(description ? { description } : {}),
+  };
+}
+
+export default async function LessonPage({ params }: Props) {
+  const { slug } = await params;
+  const lessonKey = await resolveLessonKey(slug);
   if (!lessonKey) return notFound();
 
   return (

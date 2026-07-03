@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { ChevronLeft, ChevronRight, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check } from "lucide-react";
+import { useProgress } from "@/components/progress-provider";
 import { Editable } from "@/components/editable-text";
 import { useContentContext } from "@/components/content-provider";
-import { useAuth } from "@/components/auth-provider";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useCourseStructure, getEffectiveStatus } from "@/hooks/use-course-structure";
 import { getStaticLesson } from "@/lib/courses/foundations-data";
 import { getCourseKeys, getCourseSlug } from "@/lib/courses/course-utils";
@@ -192,14 +194,14 @@ function EditableTextarea({
   lang?: string;
 }) {
   const { content, updateContent } = useContentContext();
-  const { profile } = useAuth();
-  const isAdmin = !!profile?.is_admin;
+  const { can } = usePermissions();
+  const canEdit = can("edit_content");
   const value = content[contentKey] ?? fallback;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
 
   // View mode: syntax-highlighted for code, plain pre for text
-  if (!isAdmin || !editing) {
+  if (!canEdit || !editing) {
     const viewEl = lang ? (
       <HighlightedCode code={value || fallback} lang={lang} />
     ) : (
@@ -211,7 +213,7 @@ function EditableTextarea({
       </pre>
     );
 
-    if (!isAdmin) return viewEl;
+    if (!canEdit) return viewEl;
 
     // Admin view-mode: click to enter edit
     return (
@@ -276,17 +278,67 @@ function renderWithLinks(text: string): React.ReactNode[] {
   return parts.length ? parts : [text];
 }
 
+// ── Image upload to Supabase Storage ──────────────────────────────────────────
+
+function ImageUploadBtn({ onUploaded }: { onUploaded: (url: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const handleFile = async (file: File) => {
+    setBusy(true);
+    try {
+      const supabase = createClient();
+      const ext = file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error } = await supabase.storage
+        .from("lesson-images")
+        .upload(path, file, { cacheControl: "31536000" });
+      if (error) throw error;
+      const { data } = supabase.storage.from("lesson-images").getPublicUrl(path);
+      onUploaded(data.publicUrl);
+    } catch (err) {
+      console.error("[upload] failed:", err);
+      alert("Image upload failed — check that the lesson-images bucket exists.");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+      />
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+        className="shrink-0 px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest cursor-pointer rounded-[var(--radius-tag)] transition-opacity hover:opacity-100 opacity-60 disabled:opacity-30"
+        style={{ border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
+      >
+        {busy ? "Uploading…" : "Upload"}
+      </button>
+    </>
+  );
+}
+
 function BlockRenderer({
   block,
   lk,
   si,
-  isAdmin,
+  canEdit,
+  canManage,
   onRemove,
 }: {
   block: Block;
   lk: string;
   si: number;
-  isAdmin: boolean;
+  canEdit: boolean;
+  canManage: boolean;
   onRemove: () => void;
 }) {
   const { content, updateContent } = useContentContext();
@@ -298,12 +350,12 @@ function BlockRenderer({
   if (block.type === "text") {
     return (
       <div className="group relative">
-        {isAdmin && (
+        {canManage && (
           <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
             <RemoveBtn onClick={onRemove} title="Remove paragraph" />
           </div>
         )}
-        {isAdmin ? (
+        {canEdit ? (
           <Editable
             as="p"
             contentKey={`${prefix}_content`}
@@ -324,7 +376,7 @@ function BlockRenderer({
     const displayLang = lang || "plaintext";
     return (
       <div className="group relative">
-        {isAdmin && (
+        {canManage && (
           <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
             <RemoveBtn onClick={onRemove} title="Remove code block" />
           </div>
@@ -334,7 +386,7 @@ function BlockRenderer({
           className="flex items-center justify-between px-4 py-1.5 rounded-t-[var(--radius-card)]"
           style={{ background: "#232428", borderBottom: "1px solid #1a1b1e" }}
         >
-          {isAdmin ? (
+          {canEdit ? (
             <Editable
               as="span"
               contentKey={`${prefix}_lang`}
@@ -367,12 +419,12 @@ function BlockRenderer({
     const url = blockContent;
     return (
       <div className="group relative">
-        {isAdmin && (
+        {canManage && (
           <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
             <RemoveBtn onClick={onRemove} title="Remove image" />
           </div>
         )}
-        {isAdmin && (
+        {canEdit && (
           <div className="flex items-center gap-2 mb-2">
             <span className="font-mono text-[9px] uppercase tracking-widest opacity-40" style={{ color: "var(--text-muted)" }}>
               URL:
@@ -384,6 +436,7 @@ function BlockRenderer({
               className="font-mono text-[10px] flex-1 truncate"
               style={{ color: "var(--text-muted)" }}
             />
+            <ImageUploadBtn onUploaded={(publicUrl) => updateContent(`${prefix}_content`, publicUrl)} />
           </div>
         )}
         {url && url !== "https://example.com/image.png" ? (
@@ -395,7 +448,7 @@ function BlockRenderer({
               className="w-full rounded-[var(--radius-card)] object-cover"
               style={{ border: "1px solid var(--border-color)" }}
             />
-            {(caption || isAdmin) && (
+            {(caption || canEdit) && (
               <figcaption className="text-center mt-2 text-[12px]" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
                 <Editable as="span" contentKey={`${prefix}_caption`} fallback="Image caption (optional)" />
               </figcaption>
@@ -416,7 +469,7 @@ function BlockRenderer({
   if (block.type === "quote") {
     return (
       <div className="group relative">
-        {isAdmin && (
+        {canManage && (
           <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
             <RemoveBtn onClick={onRemove} title="Remove quote" />
           </div>
@@ -430,7 +483,7 @@ function BlockRenderer({
             borderRadius: "0 var(--radius-card) var(--radius-card) 0",
           }}
         >
-          {isAdmin ? (
+          {canEdit ? (
             <Editable as="span" contentKey={`${prefix}_content`} fallback="Quote text here…" />
           ) : (
             <span>{renderWithLinks(blockContent || "Quote text here…")}</span>
@@ -491,6 +544,30 @@ function AddBlockMenu({
   );
 }
 
+// ── Mark-complete button ──────────────────────────────────────────────────────
+
+function MarkCompleteButton({ lessonKey }: { lessonKey: string }) {
+  const { completed, signedIn, toggleComplete } = useProgress();
+  if (!signedIn) return null;
+  const done = completed.has(lessonKey);
+
+  return (
+    <div className="flex justify-center mb-10">
+      <button
+        onClick={() => toggleComplete(lessonKey)}
+        className="flex items-center gap-2 px-5 py-2 font-mono text-[11px] uppercase tracking-widest cursor-pointer rounded-[var(--radius-button)] transition-colors"
+        style={done
+          ? { background: "var(--accent)", color: "#fff", border: "1px solid var(--accent)" }
+          : { background: "transparent", color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}
+        title={done ? "Click to mark incomplete" : undefined}
+      >
+        <Check size={13} strokeWidth={2.5} />
+        {done ? "Completed" : "Mark Lesson Complete"}
+      </button>
+    </div>
+  );
+}
+
 // ── Status control on lesson page ─────────────────────────────────────────────
 
 const STATUSES = [
@@ -501,11 +578,10 @@ const STATUSES = [
 
 function LessonStatusBadge({ lessonKey, hasStaticContent }: { lessonKey: string; hasStaticContent: boolean }) {
   const { content, updateContent } = useContentContext();
-  const { profile } = useAuth();
-  const isAdmin = !!profile?.is_admin;
+  const { can } = usePermissions();
   const status = getEffectiveStatus(lessonKey, hasStaticContent, content);
 
-  if (!isAdmin) return null;
+  if (!can("manage_lessons")) return null;
 
   return (
     <div className="relative inline-flex items-center">
@@ -535,8 +611,10 @@ interface Props {
 
 export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Props) {
   const { content, updateContent } = useContentContext();
-  const { profile } = useAuth();
-  const isAdmin = !!profile?.is_admin;
+  const { can } = usePermissions();
+  const canEdit = can("edit_content");
+  const canManage = can("manage_sections");
+  const canPublish = can("manage_lessons");
   const { allLessons } = useCourseStructure(courseId);
 
   // Static lesson data for fallbacks (only exists for foundations lessons)
@@ -554,8 +632,8 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
   const prev = currentIdx > 0 ? allLessons[currentIdx - 1] : null;
   const next = currentIdx < allLessons.length - 1 ? allLessons[currentIdx + 1] : null;
 
-  const isAccessiblePrev = prev && (getEffectiveStatus(prev.lessonKey, prev.hasStaticContent, content) === "published" || isAdmin);
-  const isAccessibleNext = next && (getEffectiveStatus(next.lessonKey, next.hasStaticContent, content) === "published" || isAdmin);
+  const isAccessiblePrev = prev && (getEffectiveStatus(prev.lessonKey, prev.hasStaticContent, content) === "published" || canPublish);
+  const isAccessibleNext = next && (getEffectiveStatus(next.lessonKey, next.hasStaticContent, content) === "published" || canPublish);
 
   // ── Outcomes ─────────────────────────────────────────────────────────────
   const defaultOutcomeCount = d?.outcomes.length ?? 0;
@@ -657,9 +735,9 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
   };
   const deleteResource = (idx: number) => updateContent(`${lk}_res${idx}_deleted`, "1");
 
-  // ── "Coming Soon" gate for non-admins (also covers removed courses) ──────
+  // ── "Coming Soon" gate for non-editors (also covers removed courses) ─────
   const courseDeleted = content[`course_${courseId}_deleted`] === "1";
-  if ((status !== "published" || courseDeleted) && !isAdmin) {
+  if ((status !== "published" || courseDeleted) && !canPublish) {
     return (
       <div className="max-w-2xl mx-auto px-6 md:px-10 py-20 text-center">
         <p className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] mb-4">
@@ -699,7 +777,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
       </div>
 
       {/* Introduction */}
-      {isAdmin ? (
+      {canEdit ? (
         <Editable
           as="p"
           contentKey={`${lk}_intro`}
@@ -721,11 +799,11 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
             <li key={i} className="group flex items-start gap-2 text-sm text-[var(--text-muted)]">
               <span className="shrink-0 mt-0.5" style={{ color: "var(--accent-medium)" }}>▸</span>
               <Editable as="span" contentKey={`${lk}_outcome_${i}`} fallback={fallback} className="flex-1" />
-              {isAdmin && <RemoveBtn onClick={() => deleteOutcome(i)} title="Remove outcome" />}
+              {canManage && <RemoveBtn onClick={() => deleteOutcome(i)} title="Remove outcome" />}
             </li>
           ))}
         </ul>
-        {isAdmin && <AddBtn label="Add Outcome" onClick={addOutcome} />}
+        {canManage && <AddBtn label="Add Outcome" onClick={addOutcome} />}
       </div>
 
       {/* ── Main Sections ────────────────────────────────── */}
@@ -741,7 +819,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
 
           return (
             <section key={i} className="group relative">
-              {isAdmin && (
+              {canManage && (
                 <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <RemoveBtn onClick={() => deleteSection(i)} title="Remove section" />
                 </div>
@@ -756,12 +834,12 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                   const paraFallback = def?.paragraphs[j] ?? "";
                   return (
                     <div key={j} className="group/p relative">
-                      {isAdmin && (
+                      {canManage && (
                         <div className="absolute -top-1 -right-1 opacity-0 group-hover/p:opacity-100 transition-opacity z-10">
                           <RemoveBtn onClick={() => deleteParag(i, j)} title="Remove paragraph" />
                         </div>
                       )}
-                      {isAdmin ? (
+                      {canEdit ? (
                         <Editable
                           as="p"
                           contentKey={`${lk}_s${i}_p${j}`}
@@ -785,7 +863,8 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                     block={block}
                     lk={lk}
                     si={i}
-                    isAdmin={isAdmin}
+                    canEdit={canEdit}
+                    canManage={canManage}
                     onRemove={() => deleteBlock(i, block.j)}
                   />
                 ))}
@@ -794,7 +873,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
               {/* Existing note / quote */}
               {(def?.note || content[`${lk}_s${i}_note`]) && content[`${lk}_s${i}_note_deleted`] !== "1" && (
                 <div className="group/note relative mt-5">
-                  {isAdmin && (
+                  {canManage && (
                     <div className="absolute -top-1 -right-1 opacity-0 group-hover/note:opacity-100 transition-opacity z-10">
                       <RemoveBtn onClick={() => updateContent(`${lk}_s${i}_note_deleted`, "1")} title="Remove callout" />
                     </div>
@@ -803,7 +882,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                     className="px-4 py-3 text-[13px] leading-relaxed"
                     style={{ borderLeft: "3px solid var(--accent-medium)", background: "var(--surface)", color: "var(--text-muted)", borderRadius: "0 var(--radius-card) var(--radius-card) 0" }}
                   >
-                    {isAdmin ? (
+                    {canEdit ? (
                       <Editable as="span" contentKey={`${lk}_s${i}_note`} fallback={def?.note ?? ""} />
                     ) : (
                       <span>{renderWithLinks(content[`${lk}_s${i}_note`] ?? (def?.note ?? ""))}</span>
@@ -812,13 +891,13 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                 </div>
               )}
 
-              {isAdmin && (
+              {canManage && (
                 <AddBlockMenu onAdd={(type) => addBlock(i, blkCount, type)} />
               )}
             </section>
           );
         })}
-        {isAdmin && <AddBtn label="Add Section" onClick={addSection} />}
+        {canManage && <AddBtn label="Add Section" onClick={addSection} />}
       </div>
 
       {/* ── Assignment ───────────────────────────────────── */}
@@ -838,7 +917,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                 <li key={i} className="group flex items-start gap-3 text-[14px]">
                   <span className="shrink-0 mt-[7px] w-1.5 h-1.5 rounded-full" style={{ background: "var(--accent-medium)" }} />
                   <Editable as="span" contentKey={`${lk}_assign_${i}`} fallback={fallback} className="flex-1 leading-relaxed" style={{ color: "var(--text-muted)" }} />
-                  {isAdmin && <RemoveBtn onClick={() => deleteAssignItem(i)} title="Remove task" />}
+                  {canManage && <RemoveBtn onClick={() => deleteAssignItem(i)} title="Remove task" />}
                 </li>
               ))}
             </ul>
@@ -848,7 +927,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
             There is no assignment for this lesson.
           </p>
         )}
-        {isAdmin && <AddBtn label="Add Task" onClick={addAssignItem} />}
+        {canManage && <AddBtn label="Add Task" onClick={addAssignItem} />}
       </div>
 
       {/* ── Knowledge Check ──────────────────────────────── */}
@@ -858,7 +937,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
           <div className="flex flex-col gap-2">
             {kcItems.map(({ i, defQ, defA }, displayIdx) => (
               <div key={i} className="group relative">
-                {isAdmin && (
+                {canManage && (
                   <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                     <RemoveBtn onClick={() => deleteKCItem(i)} title="Remove question" />
                   </div>
@@ -882,7 +961,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
             There is no knowledge check for this lesson.
           </p>
         )}
-        {isAdmin && <AddBtn label="Add Question" onClick={addKCItem} />}
+        {canManage && <AddBtn label="Add Question" onClick={addKCItem} />}
       </div>
 
       {/* ── Additional Resources ─────────────────────────── */}
@@ -902,14 +981,14 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                     </a>
                     <span style={{ color: "var(--text-muted)" }}> — </span>
                     <Editable as="span" contentKey={`${lk}_res${i}_desc`} fallback={defDesc} style={{ color: "var(--text-muted)" }} />
-                    {isAdmin && isNew && (
+                    {canEdit && isNew && (
                       <div className="mt-1 flex items-center gap-1.5">
                         <span className="font-mono text-[9px] uppercase tracking-widest opacity-40 shrink-0" style={{ color: "var(--text-muted)" }}>URL:</span>
                         <Editable as="span" contentKey={`${lk}_res${i}_url`} fallback={defUrl} className="font-mono text-[10px] truncate" style={{ color: "var(--text-muted)" }} />
                       </div>
                     )}
                   </div>
-                  {isAdmin && <RemoveBtn onClick={() => deleteResource(i)} title="Remove resource" />}
+                  {canManage && <RemoveBtn onClick={() => deleteResource(i)} title="Remove resource" />}
                 </li>
               );
             })}
@@ -919,8 +998,11 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
             There are no additional resources for this lesson.
           </p>
         )}
-        {isAdmin && <AddBtn label="Add Resource" onClick={addResource} />}
+        {canManage && <AddBtn label="Add Resource" onClick={addResource} />}
       </div>
+
+      {/* Mark complete */}
+      {status === "published" && <MarkCompleteButton lessonKey={lk} />}
 
       {/* Prev / Next navigation */}
       <div className="flex items-start justify-between gap-4 pt-8" style={{ borderTop: "1px solid var(--border-color)" }}>

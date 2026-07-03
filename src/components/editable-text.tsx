@@ -1,8 +1,8 @@
 "use client";
 
 import { createElement, useRef, useEffect, useCallback } from "react";
-import { useAuth } from "./auth-provider";
 import { useContentContext } from "./content-provider";
+import { usePermissions } from "@/hooks/use-permissions";
 
 interface EditableProps {
   contentKey: string;
@@ -13,12 +13,11 @@ interface EditableProps {
 }
 
 export function Editable({ contentKey, fallback, as = "span", className, style }: EditableProps) {
-  const { profile } = useAuth();
+  const { can } = usePermissions();
   const { content, updateContent } = useContentContext();
-  const isAdmin = !!profile?.is_admin;
   const value = content[contentKey] ?? fallback;
 
-  if (!isAdmin) {
+  if (!can("edit_content")) {
     return createElement(as, { className, style }, value);
   }
 

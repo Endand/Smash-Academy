@@ -2,14 +2,18 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, X, ChevronDown } from "lucide-react";
+import { Plus, X, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { useProgress } from "@/components/progress-provider";
 import { Editable } from "@/components/editable-text";
 import { EditableIcon } from "@/components/editable-icon";
 import { useContentContext } from "@/components/content-provider";
-import { useAuth } from "@/components/auth-provider";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   useCourseStructure,
   getEffectiveStatus,
+  getSectionIdList,
+  getLessonIdList,
+  moveVisible,
   parseJSON,
   type LiveLesson,
   type LiveSection,
@@ -28,12 +32,11 @@ const STATUSES = [
 
 function LevelBadge({ courseId }: { courseId: string }) {
   const { content, updateContent } = useContentContext();
-  const { profile } = useAuth();
-  const isAdmin = !!profile?.is_admin;
+  const { can } = usePermissions();
   const { levelKey } = getCourseKeys(courseId);
   const level = content[levelKey] ?? "Beginner";
 
-  if (!isAdmin) {
+  if (!can("manage_lessons")) {
     return (
       <span
         className="font-mono text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-tag)]"
@@ -62,11 +65,10 @@ function LevelBadge({ courseId }: { courseId: string }) {
 
 function StatusControl({ lessonKey, hasStaticContent }: { lessonKey: string; hasStaticContent: boolean }) {
   const { content, updateContent } = useContentContext();
-  const { profile } = useAuth();
-  const isAdmin = !!profile?.is_admin;
+  const { can } = usePermissions();
   const status = getEffectiveStatus(lessonKey, hasStaticContent, content);
 
-  if (!isAdmin) {
+  if (!can("manage_lessons")) {
     if (status === "published") return (
       <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--accent-medium)" }}>Start →</span>
     );
@@ -96,22 +98,28 @@ function StatusControl({ lessonKey, hasStaticContent }: { lessonKey: string; has
 // ── Lesson row ────────────────────────────────────────────────────────────────
 
 function LessonRow({
-  lesson, courseSlug, isLast, onRemove,
+  lesson, courseSlug, isLast, onRemove, onMove, canMoveUp, canMoveDown,
 }: {
   lesson: LiveLesson;
   courseSlug: string;
   isLast: boolean;
   onRemove: () => void;
+  onMove: (dir: -1 | 1) => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
 }) {
   const { content } = useContentContext();
-  const { profile } = useAuth();
-  const isAdmin = !!profile?.is_admin;
+  const { can } = usePermissions();
+  const canManage = can("manage_sections");
+  const canPublish = can("manage_lessons");
+  const { completed } = useProgress();
   const iconName = content[`${lesson.lessonKey}_icon`] ?? lesson.iconFallback;
   const isProject = PROJECT_ICONS.has(iconName);
   const status = getEffectiveStatus(lesson.lessonKey, lesson.hasStaticContent, content);
-  const isAccessible = status === "published" || isAdmin;
+  const isAccessible = status === "published" || canPublish;
+  const isComplete = completed.has(lesson.lessonKey);
 
-  if (status === "draft" && !isAdmin) return null;
+  if (status === "draft" && !canPublish) return null;
 
   const inner = (
     <div
@@ -135,16 +143,39 @@ function LessonRow({
           Project
         </span>
       )}
+      {isComplete && (
+        <Check size={14} strokeWidth={2} className="shrink-0" style={{ color: "var(--accent-medium)" }} aria-label="Completed" />
+      )}
       <StatusControl lessonKey={lesson.lessonKey} hasStaticContent={lesson.hasStaticContent} />
-      {isAdmin && (
-        <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
-          title="Remove lesson"
-          className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity ml-1"
-          style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
-        >
-          <X size={9} />
-        </button>
+      {canManage && (
+        <span className="flex items-center gap-0.5 shrink-0 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMove(-1); }}
+            disabled={!canMoveUp}
+            title="Move up"
+            className="w-4 h-4 rounded flex items-center justify-center cursor-pointer disabled:opacity-20 disabled:cursor-default"
+            style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
+          >
+            <ChevronUp size={9} />
+          </button>
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMove(1); }}
+            disabled={!canMoveDown}
+            title="Move down"
+            className="w-4 h-4 rounded flex items-center justify-center cursor-pointer disabled:opacity-20 disabled:cursor-default"
+            style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
+          >
+            <ChevronDown size={9} />
+          </button>
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
+            title="Remove lesson"
+            className="w-4 h-4 rounded-full flex items-center justify-center cursor-pointer"
+            style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
+          >
+            <X size={9} />
+          </button>
+        </span>
       )}
     </div>
   );
@@ -249,9 +280,11 @@ function SlugRow({ courseId, courseSlug }: { courseId: string; courseSlug: strin
 
 export function CourseOverview({ courseId }: { courseId: string }) {
   const { content, updateContent } = useContentContext();
-  const { profile } = useAuth();
-  const isAdmin = !!profile?.is_admin;
+  const { can, isAdmin } = usePermissions();
+  const canManage = can("manage_sections");
+  const canPublish = can("manage_lessons");
   const { sections, allLessons } = useCourseStructure(courseId);
+  const { completed, signedIn } = useProgress();
   const { titleKey, descKey } = getCourseKeys(courseId);
   const courseSlug = getCourseSlug(courseId, content);
   const courseStatus = getCourseStatus(courseId, content);
@@ -259,12 +292,31 @@ export function CourseOverview({ courseId }: { courseId: string }) {
   const [addingSection, setAddingSection] = useState(false);
   const [newSectionName, setNewSectionName] = useState("");
 
-  // Drafts are hidden from non-admins, so leave them out of their counts too
+  // Drafts are hidden from non-editors, so leave them out of their counts too
   const countableLessons = allLessons.filter(
-    (l) => isAdmin || getEffectiveStatus(l.lessonKey, l.hasStaticContent, content) !== "draft"
+    (l) => canPublish || getEffectiveStatus(l.lessonKey, l.hasStaticContent, content) !== "draft"
   );
   const lessonCount = countableLessons.filter((l) => !PROJECT_ICONS.has(content[`${l.lessonKey}_icon`] ?? l.iconFallback)).length;
   const projectCount = countableLessons.length - lessonCount;
+
+  // Learner progress over published lessons
+  const publishedLessons = allLessons.filter(
+    (l) => getEffectiveStatus(l.lessonKey, l.hasStaticContent, content) === "published"
+  );
+  const completedCount = publishedLessons.filter((l) => completed.has(l.lessonKey)).length;
+  const progressPct = publishedLessons.length ? Math.round((completedCount / publishedLessons.length) * 100) : 0;
+
+  const moveSection = (sId: string, dir: -1 | 1) => {
+    const ids = getSectionIdList(courseId, content);
+    const next = moveVisible(ids, sId, dir, (x) => content[`${courseId}_${x}_deleted`] !== "1");
+    if (next) updateContent(`${courseId}_section_ids`, JSON.stringify(next));
+  };
+
+  const moveLesson = (section: LiveSection, lId: string, dir: -1 | 1) => {
+    const ids = getLessonIdList(courseId, section.sectionId, content);
+    const next = moveVisible(ids, lId, dir, (x) => content[`${courseId}_${x}_deleted`] !== "1");
+    if (next) updateContent(`${section.sectionKey}_lesson_ids`, JSON.stringify(next));
+  };
 
   const addSection = () => {
     const name = newSectionName.trim() || "New Section";
@@ -285,9 +337,9 @@ export function CourseOverview({ courseId }: { courseId: string }) {
   const removeSection = (section: LiveSection) => updateContent(`${section.sectionKey}_deleted`, "1");
   const removeLesson  = (lesson: LiveLesson)  => updateContent(`${lesson.lessonKey}_deleted`, "1");
 
-  // Non-admins see "Coming Soon" for unavailable or removed courses
+  // Non-editors see "Coming Soon" for unavailable or removed courses
   const isDeleted = content[`course_${courseId}_deleted`] === "1";
-  if ((courseStatus !== "available" || isDeleted) && !isAdmin) {
+  if ((courseStatus !== "available" || isDeleted) && !canPublish) {
     return (
       <div className="max-w-2xl mx-auto px-6 py-20 text-center">
         <p className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] mb-4">Coming soon</p>
@@ -309,7 +361,7 @@ export function CourseOverview({ courseId }: { courseId: string }) {
       <div className="mb-14">
         <div className="flex items-center gap-2 mb-3">
           <p className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)]">Course</p>
-          {isAdmin && (
+          {canPublish && (
             <div className="relative inline-flex items-center ml-2">
               <select
                 value={courseStatus}
@@ -340,11 +392,22 @@ export function CourseOverview({ courseId }: { courseId: string }) {
           <span style={{ opacity: 0.4 }}>·</span>
           <span>{projectCount} projects</span>
         </div>
+        {signedIn && publishedLessons.length > 0 && (
+          <div className="mt-4 max-w-xs">
+            <div className="flex items-center justify-between mb-1.5 font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+              <span>Progress</span>
+              <span>{completedCount} / {publishedLessons.length}</span>
+            </div>
+            <div className="h-1 rounded-full overflow-hidden" style={{ background: "var(--surface-raised)", border: "1px solid var(--border-color)" }}>
+              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${progressPct}%`, background: "var(--accent-medium)" }} />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Sections */}
       <div className="flex flex-col gap-10">
-        {sections.map((section) => (
+        {sections.map((section, si) => (
           <div key={section.sectionKey} className="group/section">
             <div className="flex items-center gap-4 mb-3">
               <Editable
@@ -354,15 +417,35 @@ export function CourseOverview({ courseId }: { courseId: string }) {
                 className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] whitespace-nowrap"
               />
               <div className="h-px flex-1 bg-[var(--border-color)]" />
-              {isAdmin && (
-                <button
-                  onClick={() => removeSection(section)}
-                  title="Remove section"
-                  className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover/section:opacity-60 hover:!opacity-100 transition-opacity"
-                  style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
-                >
-                  <X size={9} />
-                </button>
+              {canManage && (
+                <span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/section:opacity-60 hover:!opacity-100 transition-opacity">
+                  <button
+                    onClick={() => moveSection(section.sectionId, -1)}
+                    disabled={si === 0}
+                    title="Move section up"
+                    className="w-4 h-4 rounded flex items-center justify-center cursor-pointer disabled:opacity-20 disabled:cursor-default"
+                    style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
+                  >
+                    <ChevronUp size={9} />
+                  </button>
+                  <button
+                    onClick={() => moveSection(section.sectionId, 1)}
+                    disabled={si === sections.length - 1}
+                    title="Move section down"
+                    className="w-4 h-4 rounded flex items-center justify-center cursor-pointer disabled:opacity-20 disabled:cursor-default"
+                    style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
+                  >
+                    <ChevronDown size={9} />
+                  </button>
+                  <button
+                    onClick={() => removeSection(section)}
+                    title="Remove section"
+                    className="w-4 h-4 rounded-full flex items-center justify-center cursor-pointer"
+                    style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
+                  >
+                    <X size={9} />
+                  </button>
+                </span>
               )}
             </div>
             <div style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)", overflow: "hidden" }}>
@@ -371,18 +454,21 @@ export function CourseOverview({ courseId }: { courseId: string }) {
                   key={lesson.lessonKey}
                   lesson={lesson}
                   courseSlug={courseSlug}
-                  isLast={i === section.lessons.length - 1 && !isAdmin}
+                  isLast={i === section.lessons.length - 1 && !canManage}
                   onRemove={() => removeLesson(lesson)}
+                  onMove={(dir) => moveLesson(section, lesson.lessonKey.slice(courseId.length + 1), dir)}
+                  canMoveUp={i > 0}
+                  canMoveDown={i < section.lessons.length - 1}
                 />
               ))}
-              {isAdmin && <AddLessonBtn courseId={courseId} section={section} />}
+              {canManage && <AddLessonBtn courseId={courseId} section={section} />}
             </div>
           </div>
         ))}
       </div>
 
       {/* Add Section */}
-      {isAdmin && (
+      {canManage && (
         <div className="mt-8">
           {addingSection ? (
             <div className="flex items-center gap-2">

@@ -5,11 +5,14 @@ import { useRouter } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/components/auth-provider";
+import { usePermissions } from "@/hooks/use-permissions";
+import { SearchButton } from "@/components/search";
 import { createClient } from "@/lib/supabase/client";
 
 export function Nav() {
   const { theme } = useTheme();
   const { user, profile, loading } = useAuth();
+  const { can } = usePermissions();
   const router = useRouter();
 
   const clearAuthCookies = () => {
@@ -91,6 +94,7 @@ export function Nav() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <SearchButton />
           <ThemeToggle />
           {loading ? (
             <div className="w-[72px]" />
@@ -119,7 +123,7 @@ export function Nav() {
                   @{profile.username}
                 </span>
               )}
-              {profile?.is_admin && (
+              {can("manage_roles") && (
                 <Link
                   href="/admin"
                   className="hidden sm:inline font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-tag)] transition-colors"

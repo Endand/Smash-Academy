@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronDown, BookOpen, Wrench } from "lucide-react";
+import { ChevronLeft, ChevronDown, BookOpen, Wrench, Check } from "lucide-react";
 import { useContentContext } from "@/components/content-provider";
-import { useAuth } from "@/components/auth-provider";
+import { usePermissions } from "@/hooks/use-permissions";
+import { useProgress } from "@/components/progress-provider";
 import { useCourseStructure, getEffectiveStatus } from "@/hooks/use-course-structure";
 import { getCourseKeys, getCourseSlug } from "@/lib/courses/course-utils";
 
@@ -17,8 +18,9 @@ interface SidebarProps {
 
 export function LessonSidebar({ currentSlug, courseId = "foundations" }: SidebarProps) {
   const { content } = useContentContext();
-  const { profile } = useAuth();
-  const isAdmin = !!profile?.is_admin;
+  const { can } = usePermissions();
+  const canPublish = can("manage_lessons");
+  const { completed } = useProgress();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { sections } = useCourseStructure(courseId);
   const courseSlug = getCourseSlug(courseId, content);
@@ -50,10 +52,11 @@ export function LessonSidebar({ currentSlug, courseId = "foundations" }: Sidebar
                 const isProject = PROJECT_ICONS.has(iconName);
                 const isActive = lesson.slug === currentSlug;
                 const status = getEffectiveStatus(lesson.lessonKey, lesson.hasStaticContent, content);
-                const isAccessible = status === "published" || isAdmin;
+                const isAccessible = status === "published" || canPublish;
+                const isComplete = completed.has(lesson.lessonKey);
 
-                // Hide drafts from non-admins
-                if (status === "draft" && !isAdmin) return null;
+                // Hide drafts from non-editors
+                if (status === "draft" && !canPublish) return null;
 
                 const row = (
                   <div
@@ -73,7 +76,10 @@ export function LessonSidebar({ currentSlug, courseId = "foundations" }: Sidebar
                       {isProject ? <Wrench size={11} strokeWidth={1.5} /> : <BookOpen size={11} strokeWidth={1.5} />}
                     </span>
                     <span className="leading-snug flex-1">{title}</span>
-                    {status === "draft" && isAdmin && (
+                    {isComplete && (
+                      <Check size={11} strokeWidth={2.5} className="shrink-0" style={{ color: "var(--accent-medium)" }} aria-label="Completed" />
+                    )}
+                    {status === "draft" && canPublish && (
                       <span className="font-mono text-[8px] uppercase opacity-40" style={{ color: "var(--text-muted)" }}>
                         Draft
                       </span>

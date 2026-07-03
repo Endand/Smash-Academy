@@ -25,64 +25,96 @@ function parseJSON<T>(str: string | undefined, fallback: T): T {
   catch { return fallback; }
 }
 
-export function useCourseStructure(courseId: string = "foundations") {
-  const { content } = useContentContext();
+// Full section id array (including deleted ids) — the source of truth for order
+export function getSectionIdList(courseId: string, content: Record<string, string>): string[] {
+  const staticSections = courseId === "foundations" ? FOUNDATIONS_SECTIONS : [];
+  return parseJSON(
+    content[`${courseId}_section_ids`],
+    staticSections.map((_, i) => `s${i}`)
+  );
+}
 
-  return useMemo((): { sections: LiveSection[]; allLessons: LiveLesson[] } => {
-    // Static seed only exists for the foundations course
-    const staticSections = courseId === "foundations" ? FOUNDATIONS_SECTIONS : [];
+function getStaticSection(courseId: string, sId: string) {
+  const staticIdx =
+    courseId === "foundations" && /^s\d+$/.test(sId)
+      ? parseInt(sId.slice(1))
+      : -1;
+  return staticIdx >= 0 ? (FOUNDATIONS_SECTIONS[staticIdx] ?? null) : null;
+}
 
-    const sectionIds: string[] = parseJSON(
-      content[`${courseId}_section_ids`],
-      staticSections.map((_, i) => `s${i}`)
-    );
+// Full lesson id array for a section (including deleted ids)
+export function getLessonIdList(courseId: string, sId: string, content: Record<string, string>): string[] {
+  const staticSection = getStaticSection(courseId, sId);
+  const defaultLessonIds =
+    staticSection?.lessons.map((l) => l.lessonKey.replace(`${courseId}_`, "")) ?? [];
+  return parseJSON(content[`${courseId}_${sId}_lesson_ids`], defaultLessonIds);
+}
 
-    const sections: LiveSection[] = [];
-    for (const sId of sectionIds) {
-      const sectionKey = `${courseId}_${sId}`;
-      if (content[`${sectionKey}_deleted`] === "1") continue;
+// Swap an id with its nearest visible neighbor in the given direction.
+// Returns the new array, or null if the move isn't possible.
+export function moveVisible(
+  ids: string[],
+  id: string,
+  dir: -1 | 1,
+  isVisible: (id: string) => boolean
+): string[] | null {
+  const idx = ids.indexOf(id);
+  if (idx < 0) return null;
+  let j = idx + dir;
+  while (j >= 0 && j < ids.length && !isVisible(ids[j])) j += dir;
+  if (j < 0 || j >= ids.length) return null;
+  const next = [...ids];
+  [next[idx], next[j]] = [next[j], next[idx]];
+  return next;
+}
 
-      const staticIdx =
-        courseId === "foundations" && /^s\d+$/.test(sId)
-          ? parseInt(sId.slice(1))
-          : -1;
-      const staticSection = staticIdx >= 0 ? (FOUNDATIONS_SECTIONS[staticIdx] ?? null) : null;
+// Pure structure builder — usable outside React (search, metadata helpers)
+export function buildCourseStructure(
+  courseId: string,
+  content: Record<string, string>
+): { sections: LiveSection[]; allLessons: LiveLesson[] } {
+  const sectionIds = getSectionIdList(courseId, content);
 
-      const defaultLessonIds =
-        staticSection?.lessons.map((l) => l.lessonKey.replace(`${courseId}_`, "")) ?? [];
-      const lessonIds: string[] = parseJSON(
-        content[`${sectionKey}_lesson_ids`],
-        defaultLessonIds
-      );
+  const sections: LiveSection[] = [];
+  for (const sId of sectionIds) {
+    const sectionKey = `${courseId}_${sId}`;
+    if (content[`${sectionKey}_deleted`] === "1") continue;
 
-      const lessons: LiveLesson[] = [];
-      for (const lId of lessonIds) {
-        const lk = `${courseId}_${lId}`;
-        if (content[`${lk}_deleted`] === "1") continue;
+    const staticSection = getStaticSection(courseId, sId);
+    const lessonIds = getLessonIdList(courseId, sId, content);
 
-        const staticLesson =
-          staticSection?.lessons.find((l) => l.lessonKey === lk) ?? null;
+    const lessons: LiveLesson[] = [];
+    for (const lId of lessonIds) {
+      const lk = `${courseId}_${lId}`;
+      if (content[`${lk}_deleted`] === "1") continue;
 
-        lessons.push({
-          lessonKey: lk,
-          slug: content[`${lk}_slug`] ?? staticLesson?.slug ?? lId,
-          titleFallback: staticLesson?.titleFallback ?? "Untitled Lesson",
-          iconFallback:  staticLesson?.iconFallback  ?? "BookOpen",
-          hasStaticContent: !!staticLesson?.content,
-        });
-      }
+      const staticLesson =
+        staticSection?.lessons.find((l) => l.lessonKey === lk) ?? null;
 
-      sections.push({
-        sectionId: sId,
-        sectionKey,
-        titleFallback: staticSection?.titleFallback ?? "Untitled Section",
-        lessons,
+      lessons.push({
+        lessonKey: lk,
+        slug: content[`${lk}_slug`] ?? staticLesson?.slug ?? lId,
+        titleFallback: staticLesson?.titleFallback ?? "Untitled Lesson",
+        iconFallback:  staticLesson?.iconFallback  ?? "BookOpen",
+        hasStaticContent: !!staticLesson?.content,
       });
     }
 
-    const allLessons = sections.flatMap((s) => s.lessons);
-    return { sections, allLessons };
-  }, [courseId, content]);
+    sections.push({
+      sectionId: sId,
+      sectionKey,
+      titleFallback: staticSection?.titleFallback ?? "Untitled Section",
+      lessons,
+    });
+  }
+
+  const allLessons = sections.flatMap((s) => s.lessons);
+  return { sections, allLessons };
+}
+
+export function useCourseStructure(courseId: string = "foundations") {
+  const { content } = useContentContext();
+  return useMemo(() => buildCourseStructure(courseId, content), [courseId, content]);
 }
 
 export function getEffectiveStatus(

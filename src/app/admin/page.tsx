@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Check } from "lucide-react";
+import { Plus, X, Check, ChevronDown } from "lucide-react";
 import { Nav } from "@/components/nav";
 import { useAuth } from "@/components/auth-provider";
 import { useContentContext } from "@/components/content-provider";
+import { usePermissions, rolePermKey } from "@/hooks/use-permissions";
+import { createClient } from "@/lib/supabase/client";
 
 // ── Permission definitions ────────────────────────────────────────────────────
 
@@ -40,7 +42,6 @@ const PERMISSIONS = [
 // ── Storage keys ──────────────────────────────────────────────────────────────
 
 const ROLES_KEY = "__perm_roles__";
-const rolePermKey = (role: string) => `__perm_${role.toLowerCase().replace(/\s+/g, "_")}__`;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,18 +55,19 @@ function parseJSON<T>(str: string | undefined, fallback: T): T {
 
 export default function AdminPage() {
   const router = useRouter();
-  const { profile, loading } = useAuth();
+  const { loading } = useAuth();
   const { content, updateContent } = useContentContext();
+  const { can, isAdmin } = usePermissions();
   const [addingRole, setAddingRole] = useState(false);
   const [newRoleName, setNewRoleName] = useState("");
 
-  const isAdmin = !!profile?.is_admin;
+  const canAccess = can("manage_roles");
 
   useEffect(() => {
-    if (!loading && !isAdmin) router.push("/");
-  }, [loading, isAdmin, router]);
+    if (!loading && !canAccess) router.push("/");
+  }, [loading, canAccess, router]);
 
-  if (loading || !isAdmin) return null;
+  if (loading || !canAccess) return null;
 
   // ── Data from site_content ────────────────────────────────────────────────
   const roles: string[] = parseJSON(content[ROLES_KEY], []);
@@ -280,8 +282,110 @@ export default function AdminPage() {
             Full admin access is always granted to users with{" "}
             <code>is_admin = true</code> in the profiles table, regardless of role.
           </p>
+
+          {/* Users — role assignment (full admins only) */}
+          {isAdmin && <UsersSection roles={roles} />}
         </div>
       </main>
     </>
+  );
+}
+
+// ── Users section ─────────────────────────────────────────────────────────────
+
+interface UserRow {
+  id: string;
+  username: string;
+  is_admin: boolean;
+  role: string | null;
+}
+
+function UsersSection({ roles }: { roles: string[] }) {
+  const [users, setUsers] = useState<UserRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, username, is_admin, role")
+          .order("username");
+        if (error) throw error;
+        setUsers((data ?? []) as UserRow[]);
+      } catch {
+        setError("Couldn't load users — make sure features_schema.sql has been run.");
+      }
+    })();
+  }, []);
+
+  const assignRole = async (userId: string, role: string) => {
+    const prev = users;
+    setUsers((u) => u?.map((row) => (row.id === userId ? { ...row, role: role || null } : row)) ?? null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc("set_user_role", { target_id: userId, new_role: role });
+      if (error) throw error;
+    } catch (err) {
+      console.error("[admin] role assignment failed:", err);
+      setUsers(prev ?? null);
+    }
+  };
+
+  return (
+    <div className="mt-14">
+      <h2 className="text-xl font-extralight tracking-wide text-[var(--text)] mb-2">Users</h2>
+      <p className="text-[12px] mb-5" style={{ color: "var(--text-muted)", opacity: 0.65 }}>
+        Assign a role to grant its permissions. Admins always have full access.
+      </p>
+
+      {error && (
+        <p className="text-[12px] font-mono" style={{ color: "var(--accent-medium)" }}>{error}</p>
+      )}
+
+      {users && (
+        <div style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)", overflow: "hidden" }}>
+          {users.map((u, i) => (
+            <div
+              key={u.id}
+              className="flex items-center justify-between gap-4 px-5 py-3"
+              style={{ borderBottom: i < users.length - 1 ? "1px solid var(--border-color)" : "none" }}
+            >
+              <span className="text-sm font-mono" style={{ color: "var(--text)" }}>@{u.username}</span>
+              {u.is_admin ? (
+                <span
+                  className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-tag)]"
+                  style={{ color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}
+                >
+                  Admin
+                </span>
+              ) : (
+                <div className="relative inline-flex items-center">
+                  <select
+                    value={u.role ?? ""}
+                    onChange={(e) => assignRole(u.id, e.target.value)}
+                    className="appearance-none font-mono text-[10px] uppercase tracking-widest px-2 py-1 pr-6 rounded-[var(--radius-tag)] cursor-pointer bg-transparent outline-none"
+                    style={{
+                      color: u.role ? "var(--accent-medium)" : "var(--text-muted)",
+                      border: `1px solid ${u.role ? "var(--accent-medium)" : "var(--border-strong)"}`,
+                    }}
+                  >
+                    <option value="">No role</option>
+                    {roles.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                  <ChevronDown size={8} className="absolute right-1.5 pointer-events-none" style={{ color: "var(--text-muted)" }} />
+                </div>
+              )}
+            </div>
+          ))}
+          {users.length === 0 && (
+            <p className="px-5 py-8 text-center text-[13px] italic" style={{ color: "var(--text-muted)", opacity: 0.45 }}>
+              No users found.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

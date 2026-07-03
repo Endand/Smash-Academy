@@ -8,6 +8,7 @@ import { ArrowRight, Plus, X, AlertTriangle } from "lucide-react";
 import { Editable } from "@/components/editable-text";
 import { useContentContext } from "@/components/content-provider";
 import { useAuth } from "@/components/auth-provider";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   getCourseKeys,
   getCourseSlug,
@@ -87,8 +88,8 @@ function CourseCard({
   onRemove: () => void;
 }) {
   const { content } = useContentContext();
-  const { profile } = useAuth();
-  const isAdmin = !!profile?.is_admin;
+  const { can, isAdmin } = usePermissions();
+  const canPublish = can("manage_lessons");
 
   const { titleKey, levelKey, descKey } = getCourseKeys(courseId);
   const courseSlug = getCourseSlug(courseId, content);
@@ -157,7 +158,7 @@ function CourseCard({
   if (isAvailable && !isDeleted) {
     return <Link href={href} className="block group">{cardInner}</Link>;
   }
-  if (isAdmin && !isDeleted) {
+  if (canPublish && !isDeleted) {
     return <Link href={href} className="block group">{cardInner}</Link>;
   }
   return <div className="group">{cardInner}</div>;

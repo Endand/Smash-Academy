@@ -12,8 +12,8 @@ import {
   Users, Globe,
   type LucideProps,
 } from "lucide-react";
-import { useAuth } from "./auth-provider";
 import { useContentContext } from "./content-provider";
+import { usePermissions } from "@/hooks/use-permissions";
 
 type LucideIcon = React.ComponentType<LucideProps>;
 
@@ -63,13 +63,12 @@ export function EditableIcon({
   strokeWidth = 1.5,
   fill = "none",
 }: EditableIconProps) {
-  const { profile } = useAuth();
+  const { can } = usePermissions();
   const { content, updateContent } = useContentContext();
-  const isAdmin = !!profile?.is_admin;
   const iconName = content[contentKey] ?? fallback;
   const Icon = ICONS[iconName] ?? ICONS[fallback] ?? BookOpen;
 
-  if (!isAdmin) {
+  if (!can("edit_icons")) {
     return <Icon size={size} className={className} strokeWidth={strokeWidth} fill={fill} />;
   }
 

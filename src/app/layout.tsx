@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/components/auth-provider";
 import { ContentProvider } from "@/components/content-provider";
+import { ProgressProvider } from "@/components/progress-provider";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/components/auth-provider";
 import "./globals.css";
@@ -60,7 +61,9 @@ export default async function RootLayout({
         <ThemeProvider>
           <AuthProvider initialUser={user ?? null} initialProfile={initialProfile}>
             <ContentProvider initialContent={initialContent}>
-              {children}
+              <ProgressProvider>
+                {children}
+              </ProgressProvider>
             </ContentProvider>
           </AuthProvider>
         </ThemeProvider>
