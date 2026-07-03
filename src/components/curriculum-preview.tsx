@@ -3,11 +3,12 @@
 import { Wrench, Swords } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { Editable } from "@/components/editable-text";
+import { COURSE_TITLE_KEY } from "@/lib/courses/foundations-data";
 
 const courses = [
   {
     icon: Wrench,
-    titleKey: "cp_foundations_title",
+    titleKey: COURSE_TITLE_KEY,
     titleFallback: "Foundations",
     descKey: "cp_foundations_desc",
     descFallback: "Getting started with modding tools, file systems, backups, and the modding ecosystem.",

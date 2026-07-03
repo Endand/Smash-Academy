@@ -3,14 +3,20 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronDown, BookOpen, Wrench } from "lucide-react";
-import { FOUNDATIONS_SECTIONS } from "@/lib/courses/foundations-data";
 import { useContentContext } from "@/components/content-provider";
+import { useAuth } from "@/components/auth-provider";
+import { useCourseStructure, getEffectiveStatus } from "@/hooks/use-course-structure";
+import { COURSE_TITLE_KEY } from "@/lib/courses/foundations-data";
 
 const PROJECT_ICONS = new Set(["Wrench", "Hammer", "Package", "Target", "Trophy"]);
 
 export function LessonSidebar({ currentSlug }: { currentSlug: string }) {
   const { content } = useContentContext();
+  const { profile } = useAuth();
+  const isAdmin = !!profile?.is_admin;
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { sections } = useCourseStructure();
+  const courseTitle = content[COURSE_TITLE_KEY] ?? "Foundations";
 
   const sidebarContent = (
     <div className="py-4">
@@ -21,11 +27,11 @@ export function LessonSidebar({ currentSlug }: { currentSlug: string }) {
         onClick={() => setMobileOpen(false)}
       >
         <ChevronLeft size={12} />
-        Foundations
+        {courseTitle}
       </Link>
 
       <div className="pt-4 flex flex-col gap-5">
-        {FOUNDATIONS_SECTIONS.map((section) => {
+        {sections.map((section) => {
           const sectionTitle = content[`${section.sectionKey}_title`] ?? section.titleFallback;
           return (
             <div key={section.sectionKey}>
@@ -37,13 +43,17 @@ export function LessonSidebar({ currentSlug }: { currentSlug: string }) {
                 const iconName = content[`${lesson.lessonKey}_icon`] ?? lesson.iconFallback;
                 const isProject = PROJECT_ICONS.has(iconName);
                 const isActive = lesson.slug === currentSlug;
-                const hasContent = !!lesson.content;
+                const status = getEffectiveStatus(lesson.lessonKey, lesson.hasStaticContent, content);
+                const isAccessible = status === "published" || isAdmin;
+
+                // Hide drafts from non-admins
+                if (status === "draft" && !isAdmin) return null;
 
                 const row = (
                   <div
                     className={`flex items-center gap-2.5 py-1.5 pr-4 text-xs transition-colors ${
-                      !isActive && hasContent ? "hover:bg-[var(--surface-raised)]" : ""
-                    } ${!hasContent ? "opacity-35" : ""}`}
+                      !isActive && isAccessible ? "hover:bg-[var(--surface-raised)]" : ""
+                    } ${!isAccessible ? "opacity-35" : ""}`}
                     style={{
                       paddingLeft: "14px",
                       borderLeft: isActive
@@ -53,21 +63,19 @@ export function LessonSidebar({ currentSlug }: { currentSlug: string }) {
                       color: isActive ? "var(--text)" : "var(--text-muted)",
                     }}
                   >
-                    <span
-                      className="shrink-0"
-                      style={{ color: isProject ? "var(--accent-medium)" : "inherit" }}
-                    >
-                      {isProject ? (
-                        <Wrench size={11} strokeWidth={1.5} />
-                      ) : (
-                        <BookOpen size={11} strokeWidth={1.5} />
-                      )}
+                    <span className="shrink-0" style={{ color: isProject ? "var(--accent-medium)" : "inherit" }}>
+                      {isProject ? <Wrench size={11} strokeWidth={1.5} /> : <BookOpen size={11} strokeWidth={1.5} />}
                     </span>
-                    <span className="leading-snug">{title}</span>
+                    <span className="leading-snug flex-1">{title}</span>
+                    {status === "draft" && isAdmin && (
+                      <span className="font-mono text-[8px] uppercase opacity-40" style={{ color: "var(--text-muted)" }}>
+                        Draft
+                      </span>
+                    )}
                   </div>
                 );
 
-                return hasContent ? (
+                return isAccessible ? (
                   <Link
                     key={lesson.lessonKey}
                     href={`/courses/foundations/${lesson.slug}`}
@@ -92,10 +100,7 @@ export function LessonSidebar({ currentSlug }: { currentSlug: string }) {
       {/* Mobile toggle bar */}
       <div
         className="md:hidden sticky top-14 z-40 flex items-center justify-between px-5 py-2.5 cursor-pointer select-none"
-        style={{
-          background: "var(--surface)",
-          borderBottom: "1px solid var(--border-color)",
-        }}
+        style={{ background: "var(--surface)", borderBottom: "1px solid var(--border-color)" }}
         onClick={() => setMobileOpen((v) => !v)}
       >
         <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
@@ -110,13 +115,7 @@ export function LessonSidebar({ currentSlug }: { currentSlug: string }) {
 
       {/* Mobile expanded panel */}
       {mobileOpen && (
-        <div
-          className="md:hidden"
-          style={{
-            background: "var(--surface)",
-            borderBottom: "1px solid var(--border-color)",
-          }}
-        >
+        <div className="md:hidden" style={{ background: "var(--surface)", borderBottom: "1px solid var(--border-color)" }}>
           {sidebarContent}
         </div>
       )}

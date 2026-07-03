@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { getLessonContext } from "@/lib/courses/foundations-data";
+import { createClient } from "@/lib/supabase/server";
+import { getStaticLessonKey } from "@/lib/courses/foundations-data";
 import { LessonSidebar } from "@/components/lesson-sidebar";
 import { LessonContent } from "@/components/lesson-content";
 import { Nav } from "@/components/nav";
@@ -11,11 +12,27 @@ interface Props {
 
 export default async function LessonPage({ params }: Props) {
   const { slug } = await params;
-  const ctx = getLessonContext(slug);
 
-  if (!ctx || !ctx.lesson.content) return notFound();
+  // Static lesson lookup (fast, in-memory)
+  let lessonKey = getStaticLessonKey(slug);
 
-  const { lesson, prev, next } = ctx;
+  // Dynamic lesson lookup (Supabase — only when static lookup misses)
+  if (!lessonKey) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("site_content")
+      .select("value")
+      .eq("key", "foundations_slug_map")
+      .maybeSingle();
+    if (data?.value) {
+      try {
+        const slugMap: Record<string, string> = JSON.parse(data.value);
+        lessonKey = slugMap[slug] ?? null;
+      } catch { /* invalid JSON */ }
+    }
+  }
+
+  if (!lessonKey) return notFound();
 
   return (
     <>
@@ -23,7 +40,7 @@ export default async function LessonPage({ params }: Props) {
       <div className="pt-14 min-h-screen flex flex-col md:flex-row">
         <LessonSidebar currentSlug={slug} />
         <main className="flex-1 min-w-0">
-          <LessonContent lesson={lesson} prev={prev} next={next} />
+          <LessonContent lessonKey={lessonKey} slug={slug} />
         </main>
       </div>
       <Footer />

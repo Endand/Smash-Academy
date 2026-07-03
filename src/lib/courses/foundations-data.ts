@@ -1,3 +1,6 @@
+export const COURSE_TITLE_KEY = "foundations_title";
+export const COURSE_LEVEL_KEY = "foundations_level";
+
 export interface LessonContent {
   introduction: string;
   outcomes: string[];
@@ -259,7 +262,17 @@ export function getAllLessons() {
   return FOUNDATIONS_SECTIONS.flatMap((s) => s.lessons);
 }
 
-// Look up a lesson by slug, returning context needed for the lesson page
+// Look up a static lesson by lessonKey
+export function getStaticLesson(lessonKey: string): CourseLessonDef | null {
+  return getAllLessons().find((l) => l.lessonKey === lessonKey) ?? null;
+}
+
+// Look up a lesson by slug — returns the lessonKey if found in static data
+export function getStaticLessonKey(slug: string): string | null {
+  return getAllLessons().find((l) => l.slug === slug)?.lessonKey ?? null;
+}
+
+// Legacy helper kept for backwards compat
 export function getLessonContext(slug: string) {
   const all = getAllLessons();
   const idx = all.findIndex((l) => l.slug === slug);

@@ -1,26 +1,109 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Nav } from "@/components/nav";
 import { Footer } from "@/components/footer";
 import { Editable } from "@/components/editable-text";
 import { EditableIcon } from "@/components/editable-icon";
 import { useContentContext } from "@/components/content-provider";
-import { FOUNDATIONS_SECTIONS } from "@/lib/courses/foundations-data";
-import type { CourseLessonDef } from "@/lib/courses/foundations-data";
+import { useAuth } from "@/components/auth-provider";
+import {
+  useCourseStructure,
+  getEffectiveStatus,
+  parseJSON,
+  type LiveLesson,
+  type LiveSection,
+} from "@/hooks/use-course-structure";
+import { COURSE_TITLE_KEY, COURSE_LEVEL_KEY } from "@/lib/courses/foundations-data";
+import { Plus, X, ChevronDown } from "lucide-react";
 
 const PROJECT_ICONS = new Set(["Wrench", "Hammer", "Package", "Target", "Trophy"]);
+const LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
+const STATUSES = [
+  { value: "published", label: "Published", color: "var(--accent-medium)" },
+  { value: "soon", label: "Soon", color: "var(--text-muted)" },
+  { value: "draft", label: "Draft", color: "var(--text-muted)" },
+] as const;
 
-function LessonRow({ lesson, isLast }: { lesson: CourseLessonDef; isLast: boolean }) {
+// ── Status badge / dropdown ───────────────────────────────────────────────────
+
+function StatusControl({
+  lessonKey,
+  hasStaticContent,
+}: {
+  lessonKey: string;
+  hasStaticContent: boolean;
+}) {
+  const { content, updateContent } = useContentContext();
+  const { profile } = useAuth();
+  const isAdmin = !!profile?.is_admin;
+  const status = getEffectiveStatus(lessonKey, hasStaticContent, content);
+
+  if (!isAdmin) {
+    if (status === "published") {
+      return (
+        <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--accent-medium)" }}>
+          Start →
+        </span>
+      );
+    }
+    if (status === "draft") return null;
+    return (
+      <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)", opacity: 0.4 }}>
+        Soon
+      </span>
+    );
+  }
+
+  // Admin: inline dropdown
+  const current = STATUSES.find((s) => s.value === status) ?? STATUSES[0];
+  return (
+    <div className="relative inline-flex items-center">
+      <select
+        value={status}
+        onChange={(e) => updateContent(`${lessonKey}_status`, e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        className="appearance-none font-mono text-[10px] uppercase tracking-widest pr-4 pl-1 py-0.5 rounded cursor-pointer bg-transparent outline-none"
+        style={{ color: current.color, border: `1px solid ${current.color}`, opacity: 0.85 }}
+      >
+        {STATUSES.map((s) => (
+          <option key={s.value} value={s.value}>{s.label}</option>
+        ))}
+      </select>
+      <ChevronDown size={9} className="absolute right-0.5 pointer-events-none" style={{ color: current.color }} />
+    </div>
+  );
+}
+
+// ── Lesson row ────────────────────────────────────────────────────────────────
+
+function LessonRow({
+  lesson,
+  isLast,
+  onRemove,
+}: {
+  lesson: LiveLesson;
+  isLast: boolean;
+  onRemove: () => void;
+}) {
   const { content } = useContentContext();
+  const { profile } = useAuth();
+  const isAdmin = !!profile?.is_admin;
+
   const iconName = content[`${lesson.lessonKey}_icon`] ?? lesson.iconFallback;
   const isProject = PROJECT_ICONS.has(iconName);
-  const hasContent = !!lesson.content;
+  const status = getEffectiveStatus(lesson.lessonKey, lesson.hasStaticContent, content);
+  const isAccessible = status === "published" || isAdmin;
+
+  // Non-admins can't see drafts
+  if (status === "draft" && !isAdmin) return null;
 
   const inner = (
     <div
-      className={`flex items-center gap-4 px-5 py-4 transition-colors ${hasContent ? "hover:bg-[var(--surface-raised)] cursor-pointer" : "cursor-default"}`}
+      className={`group flex items-center gap-4 px-5 py-4 transition-colors ${
+        isAccessible ? "hover:bg-[var(--surface-raised)] cursor-pointer" : "cursor-default"
+      }`}
       style={{ borderBottom: !isLast ? "1px solid var(--border-color)" : "none" }}
     >
       <span
@@ -41,7 +124,8 @@ function LessonRow({ lesson, isLast }: { lesson: CourseLessonDef; isLast: boolea
         as="span"
         contentKey={`${lesson.lessonKey}_title`}
         fallback={lesson.titleFallback}
-        className="flex-1 text-sm text-[var(--text)]"
+        className="flex-1 text-sm"
+        style={{ color: status === "draft" ? "var(--text-muted)" : "var(--text)", opacity: status === "draft" ? 0.5 : 1 }}
       />
       {isProject && (
         <span
@@ -51,25 +135,21 @@ function LessonRow({ lesson, isLast }: { lesson: CourseLessonDef; isLast: boolea
           Project
         </span>
       )}
-      {hasContent ? (
-        <span
-          className="font-mono text-[10px] uppercase tracking-widest"
-          style={{ color: "var(--accent-medium)" }}
+      <StatusControl lessonKey={lesson.lessonKey} hasStaticContent={lesson.hasStaticContent} />
+      {isAdmin && (
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
+          title="Remove lesson"
+          className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity ml-1"
+          style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
         >
-          Start →
-        </span>
-      ) : (
-        <span
-          className="font-mono text-[10px] uppercase tracking-widest"
-          style={{ color: "var(--text-muted)", opacity: 0.4 }}
-        >
-          Soon
-        </span>
+          <X size={9} />
+        </button>
       )}
     </div>
   );
 
-  return hasContent ? (
+  return isAccessible ? (
     <Link href={`/courses/foundations/${lesson.slug}`} className="block">
       {inner}
     </Link>
@@ -78,21 +158,117 @@ function LessonRow({ lesson, isLast }: { lesson: CourseLessonDef; isLast: boolea
   );
 }
 
-export default function FoundationsPage() {
-  const { content } = useContentContext();
+// ── Level dropdown ────────────────────────────────────────────────────────────
 
-  const [lessonCount, projectCount] = useMemo(() => {
-    let l = 0;
-    let p = 0;
-    for (const section of FOUNDATIONS_SECTIONS) {
-      for (const lesson of section.lessons) {
-        const iconName = content[`${lesson.lessonKey}_icon`] ?? lesson.iconFallback;
-        if (PROJECT_ICONS.has(iconName)) p++;
-        else l++;
-      }
-    }
-    return [l, p];
-  }, [content]);
+function LevelBadge() {
+  const { content, updateContent } = useContentContext();
+  const { profile } = useAuth();
+  const isAdmin = !!profile?.is_admin;
+  const level = content[COURSE_LEVEL_KEY] ?? "Beginner";
+
+  if (!isAdmin) {
+    return (
+      <span
+        className="font-mono text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-tag)]"
+        style={{ color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}
+      >
+        {level}
+      </span>
+    );
+  }
+
+  return (
+    <div className="relative inline-flex items-center">
+      <select
+        value={level}
+        onChange={(e) => updateContent(COURSE_LEVEL_KEY, e.target.value)}
+        className="appearance-none font-mono text-[10px] uppercase tracking-widest px-2 py-0.5 pr-6 rounded-[var(--radius-tag)] cursor-pointer bg-transparent outline-none"
+        style={{ color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}
+      >
+        {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+      </select>
+      <ChevronDown size={9} className="absolute right-1.5 pointer-events-none" style={{ color: "var(--accent-medium)" }} />
+    </div>
+  );
+}
+
+// ── Add lesson button ─────────────────────────────────────────────────────────
+
+function AddLessonBtn({ section }: { section: LiveSection }) {
+  const { content, updateContent } = useContentContext();
+
+  const handleAdd = () => {
+    const ts = Date.now();
+    const lId = `ldyn_${ts}`;
+    const lk = `foundations_${lId}`;
+    const short = ts.toString().slice(-6);
+    const slug = `new-lesson-${short}`;
+
+    const currentIds: string[] = parseJSON(
+      content[`${section.sectionKey}_lesson_ids`],
+      section.lessons.map((l) => l.lessonKey.replace("foundations_", ""))
+    );
+
+    updateContent(`${section.sectionKey}_lesson_ids`, JSON.stringify([...currentIds, lId]));
+    updateContent(`${lk}_title`, "New Lesson");
+    updateContent(`${lk}_status`, "draft");
+    updateContent(`${lk}_icon`, "BookOpen");
+    updateContent(`${lk}_slug`, slug);
+
+    const slugMap: Record<string, string> = parseJSON(content["foundations_slug_map"], {});
+    updateContent("foundations_slug_map", JSON.stringify({ ...slugMap, [slug]: lk }));
+  };
+
+  return (
+    <button
+      onClick={handleAdd}
+      className="w-full flex items-center justify-center gap-1.5 px-4 py-2 font-mono text-[10px] uppercase tracking-widest cursor-pointer transition-colors"
+      style={{ borderTop: "1px dashed var(--border-strong)", color: "var(--text-muted)" }}
+      onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent-medium)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+    >
+      <Plus size={10} /> Add Lesson
+    </button>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function FoundationsPage() {
+  const { content, updateContent } = useContentContext();
+  const { profile } = useAuth();
+  const isAdmin = !!profile?.is_admin;
+  const { sections, allLessons } = useCourseStructure();
+  const [addingSection, setAddingSection] = useState(false);
+  const [newSectionName, setNewSectionName] = useState("");
+
+  const lessonCount = allLessons.filter((l) => !PROJECT_ICONS.has(content[`${l.lessonKey}_icon`] ?? l.iconFallback)).length;
+  const projectCount = allLessons.filter((l) => PROJECT_ICONS.has(content[`${l.lessonKey}_icon`] ?? l.iconFallback)).length;
+
+  const addSection = () => {
+    const name = newSectionName.trim() || "New Section";
+    const ts = Date.now();
+    const sId = `sdyn_${ts}`;
+    const sectionKey = `foundations_${sId}`;
+
+    const currentIds: string[] = parseJSON(
+      content["foundations_section_ids"],
+      sections.map((s) => s.sectionId)
+    );
+    updateContent("foundations_section_ids", JSON.stringify([...currentIds, sId]));
+    updateContent(`${sectionKey}_title`, name);
+    updateContent(`${sectionKey}_lesson_ids`, "[]");
+    setNewSectionName("");
+    setAddingSection(false);
+  };
+
+  const removeSection = (section: LiveSection) => {
+    updateContent(`${section.sectionKey}_deleted`, "1");
+  };
+
+  const removeLesson = (lesson: LiveLesson) => {
+    updateContent(`${lesson.lessonKey}_deleted`, "1");
+  };
 
   return (
     <>
@@ -107,17 +283,12 @@ export default function FoundationsPage() {
             </p>
             <div className="flex items-center gap-3 mb-5">
               <Editable
-                contentKey="foundations_title"
+                contentKey={COURSE_TITLE_KEY}
                 fallback="Foundations"
                 as="h1"
                 className="text-4xl font-extralight tracking-wide text-[var(--text)]"
               />
-              <span
-                className="font-mono text-[10px] uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-tag)]"
-                style={{ color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}
-              >
-                Beginner
-              </span>
+              <LevelBadge />
             </div>
             <Editable
               contentKey="foundations_description"
@@ -125,10 +296,7 @@ export default function FoundationsPage() {
               as="p"
               className="text-[var(--text-muted)] leading-relaxed"
             />
-            <div
-              className="mt-5 font-mono text-[11px] flex items-center gap-3"
-              style={{ color: "var(--text-muted)" }}
-            >
+            <div className="mt-5 font-mono text-[11px] flex items-center gap-3" style={{ color: "var(--text-muted)" }}>
               <span>{lessonCount} lessons</span>
               <span style={{ opacity: 0.4 }}>·</span>
               <span>{projectCount} projects</span>
@@ -137,8 +305,8 @@ export default function FoundationsPage() {
 
           {/* Sections */}
           <div className="flex flex-col gap-10">
-            {FOUNDATIONS_SECTIONS.map((section) => (
-              <div key={section.sectionKey}>
+            {sections.map((section) => (
+              <div key={section.sectionKey} className="group/section">
                 <div className="flex items-center gap-4 mb-3">
                   <Editable
                     as="span"
@@ -147,25 +315,70 @@ export default function FoundationsPage() {
                     className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] whitespace-nowrap"
                   />
                   <div className="h-px flex-1 bg-[var(--border-color)]" />
+                  {isAdmin && (
+                    <button
+                      onClick={() => removeSection(section)}
+                      title="Remove section"
+                      className="shrink-0 w-4 h-4 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover/section:opacity-60 hover:!opacity-100 transition-opacity"
+                      style={{ background: "var(--surface-raised)", border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
+                    >
+                      <X size={9} />
+                    </button>
+                  )}
                 </div>
-                <div
-                  style={{
-                    border: "1px solid var(--border-color)",
-                    borderRadius: "var(--radius-card)",
-                    overflow: "hidden",
-                  }}
-                >
+
+                <div style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)", overflow: "hidden" }}>
                   {section.lessons.map((lesson, i) => (
                     <LessonRow
                       key={lesson.lessonKey}
                       lesson={lesson}
-                      isLast={i === section.lessons.length - 1}
+                      isLast={i === section.lessons.length - 1 && !isAdmin}
+                      onRemove={() => removeLesson(lesson)}
                     />
                   ))}
+                  {isAdmin && <AddLessonBtn section={section} />}
                 </div>
               </div>
             ))}
           </div>
+
+          {/* Add Section */}
+          {isAdmin && (
+            <div className="mt-8">
+              {addingSection ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={newSectionName}
+                    onChange={(e) => setNewSectionName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addSection();
+                      if (e.key === "Escape") { setAddingSection(false); setNewSectionName(""); }
+                    }}
+                    placeholder="Section name"
+                    className="flex-1 px-3 py-2 text-sm font-mono bg-transparent outline-none"
+                    style={{ border: "1px solid var(--border-strong)", borderRadius: "var(--radius-button)", color: "var(--text)" }}
+                  />
+                  <button onClick={addSection} className="px-4 py-2 text-[11px] font-mono uppercase tracking-widest cursor-pointer rounded-[var(--radius-button)]" style={{ background: "var(--accent)", color: "#fff" }}>
+                    Add
+                  </button>
+                  <button onClick={() => { setAddingSection(false); setNewSectionName(""); }} className="px-3 py-2 text-[11px] font-mono uppercase tracking-widest cursor-pointer" style={{ color: "var(--text-muted)" }}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setAddingSection(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 font-mono text-[10px] uppercase tracking-widest cursor-pointer transition-colors"
+                  style={{ border: "1px dashed var(--border-strong)", borderRadius: "var(--radius-card)", color: "var(--text-muted)" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent-medium)"; e.currentTarget.style.borderColor = "var(--accent-medium)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.borderColor = "var(--border-strong)"; }}
+                >
+                  <Plus size={11} /> Add Section
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </main>
       <Footer />
