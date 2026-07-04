@@ -87,7 +87,7 @@ function AdminField({ tag, value, className, style, onSave }: AdminFieldProps) {
     contentEditable: true,
     suppressContentEditableWarning: true,
     spellCheck: false,
-    onClick: (e: React.MouseEvent) => e.stopPropagation(),
+    onClick: (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); },
     onFocus: () => { isEditing.current = true; },
     onBlur: handleBlur,
     onKeyDown: handleKeyDown,

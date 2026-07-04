@@ -106,6 +106,9 @@ function AdminIconPicker({
   const Icon = ICONS[iconName] ?? BookOpen;
 
   const handleClick = (e: React.MouseEvent) => {
+    // preventDefault too — inside a lesson-row <Link>, stopPropagation alone
+    // still lets the browser follow the anchor's href with a full page load
+    e.preventDefault();
     e.stopPropagation();
     if (!open && btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect();
