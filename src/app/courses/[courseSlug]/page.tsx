@@ -17,12 +17,22 @@ interface Props {
 }
 
 async function resolveCourseId(courseSlug: string): Promise<string | null> {
+  const supabase = await createClient();
+
   // 1. Check seed courses with known slugs
   const seeded = SEED_SLUG_MAP[courseSlug];
-  if (seeded) return seeded;
+  if (seeded) {
+    // Seed slug hit — but if the course was renamed, the old URL is dead
+    const { data } = await supabase
+      .from("site_content")
+      .select("value")
+      .eq("key", `course_${seeded}_slug`)
+      .maybeSingle();
+    if (data?.value && data.value !== courseSlug) return null;
+    return seeded;
+  }
 
   // 2. Check dynamically added courses via slug map in site_content
-  const supabase = await createClient();
   const { data } = await supabase
     .from("site_content")
     .select("value")

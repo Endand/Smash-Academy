@@ -1,8 +1,21 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { Nav } from "@/components/nav";
 import { Footer } from "@/components/footer";
 import { CourseOverview } from "@/components/course-overview";
 import { createClient } from "@/lib/supabase/server";
+
+// If the course URL was renamed (course_foundations_slug set to something
+// else), this legacy static route stops resolving.
+async function foundationsSlugCurrent(): Promise<boolean> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("site_content")
+    .select("value")
+    .eq("key", "course_foundations_slug")
+    .maybeSingle();
+  return !data?.value || data.value === "foundations";
+}
 
 export async function generateMetadata(): Promise<Metadata> {
   const supabase = await createClient();
@@ -19,7 +32,9 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function FoundationsPage() {
+export default async function FoundationsPage() {
+  if (!(await foundationsSlugCurrent())) return notFound();
+
   return (
     <>
       <Nav />

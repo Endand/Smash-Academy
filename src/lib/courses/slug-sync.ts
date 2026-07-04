@@ -5,6 +5,22 @@
 import { buildCourseStructure, parseJSON } from "./course-structure";
 import { getCourseKeys, getCourseSlug, slugFromTitle, SEED_COURSE_IDS } from "./course-utils";
 
+// Replace-semantics map update: drops every entry pointing at `id` before
+// adding the new slug, so renamed URLs stop resolving.
+export function replaceSlugMapEntry(
+  mapJson: string | undefined,
+  slug: string,
+  id: string
+): string {
+  const map = parseJSON<Record<string, string>>(mapJson, {});
+  const next: Record<string, string> = {};
+  for (const [s, v] of Object.entries(map)) {
+    if (v !== id) next[s] = v;
+  }
+  next[slug] = id;
+  return JSON.stringify(next);
+}
+
 // Returns extra [key, value] writes to perform alongside the title write.
 export function computeSlugSync(
   key: string,
@@ -24,10 +40,9 @@ export function computeSlugSync(
     const newSlug = slugFromTitle(value);
     const oldSlug = getCourseSlug(courseId, content);
     if (newSlug === oldSlug) return [];
-    const map = parseJSON<Record<string, string>>(content["curriculum_slug_map"], {});
     return [
       [`course_${courseId}_slug`, newSlug],
-      ["curriculum_slug_map", JSON.stringify({ ...map, [newSlug]: courseId })],
+      ["curriculum_slug_map", replaceSlugMapEntry(content["curriculum_slug_map"], newSlug, courseId)],
     ];
   }
 
@@ -42,10 +57,9 @@ export function computeSlugSync(
     if (!lesson) continue;
     const newSlug = slugFromTitle(value);
     if (newSlug === lesson.slug) return [];
-    const map = parseJSON<Record<string, string>>(content[`${courseId}_slug_map`], {});
     return [
       [`${lk}_slug`, newSlug],
-      [`${courseId}_slug_map`, JSON.stringify({ ...map, [newSlug]: lk })],
+      [`${courseId}_slug_map`, replaceSlugMapEntry(content[`${courseId}_slug_map`], newSlug, lk)],
     ];
   }
 

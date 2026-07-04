@@ -11,6 +11,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useCourseStructure, getEffectiveStatus, parseJSON } from "@/hooks/use-course-structure";
 import { getStaticLesson } from "@/lib/courses/foundations-data";
 import { getCourseKeys, getCourseSlug, slugFromTitle, PROJECT_ICONS } from "@/lib/courses/course-utils";
+import { replaceSlugMapEntry } from "@/lib/courses/slug-sync";
 
 // ── Shared admin UI ───────────────────────────────────────────────────────────
 
@@ -593,9 +594,8 @@ function LessonSlugRow({
   const applySlug = (slug: string) => {
     const clean = slug.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || currentSlug;
     updateContent(`${lk}_slug`, clean);
-    // Register in the course's slug map so the lesson route resolves the new URL
-    const map = parseJSON<Record<string, string>>(content[`${courseId}_slug_map`], {});
-    updateContent(`${courseId}_slug_map`, JSON.stringify({ ...map, [clean]: lk }));
+    // Replace this lesson's entry in the course slug map — old URLs stop resolving
+    updateContent(`${courseId}_slug_map`, replaceSlugMapEntry(content[`${courseId}_slug_map`], clean, lk));
     setEditing(false);
   };
 
@@ -624,6 +624,46 @@ function LessonSlugRow({
           <button onClick={() => { setDraft(currentSlug); setEditing(true); }} className="px-2 py-0.5 cursor-pointer hover:opacity-100 opacity-40 transition-opacity">Edit</button>
           <button onClick={syncFromTitle} className="px-2 py-0.5 cursor-pointer hover:opacity-100 opacity-40 transition-opacity">Sync from title</button>
         </>
+      )}
+    </div>
+  );
+}
+
+// ── Author credits (admin-editable only) ──────────────────────────────────────
+
+function AuthorCredits({ lk }: { lk: string }) {
+  const { content } = useContentContext();
+  const { isAdmin } = usePermissions();
+  const author = content[`${lk}_author`] ?? "";
+  const editors = content[`${lk}_editors`] ?? "";
+
+  // Learners only see the block when credits are set
+  if (!isAdmin && !author && !editors) return null;
+
+  return (
+    <div
+      className="mb-10 pt-5 flex flex-col gap-1.5 font-mono text-[12px]"
+      style={{ borderTop: "1px solid var(--border-color)", color: "var(--text-muted)" }}
+    >
+      {(isAdmin || author) && (
+        <div className="flex items-baseline gap-2">
+          <span className="uppercase tracking-widest text-[10px] opacity-50 shrink-0">Written by</span>
+          {isAdmin ? (
+            <Editable as="span" contentKey={`${lk}_author`} fallback="Add author…" />
+          ) : (
+            <span>{author}</span>
+          )}
+        </div>
+      )}
+      {(isAdmin || editors) && (
+        <div className="flex items-baseline gap-2">
+          <span className="uppercase tracking-widest text-[10px] opacity-50 shrink-0">Edited by</span>
+          {isAdmin ? (
+            <Editable as="span" contentKey={`${lk}_editors`} fallback="Add editors…" />
+          ) : (
+            <span>{editors}</span>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1218,6 +1258,9 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
         {canManage && <AddBtn label="Add Resource" onClick={addResource} />}
       </div>
       )}
+
+      {/* Author credits */}
+      <AuthorCredits lk={lk} />
 
       {/* Mark complete */}
       {status === "published" && <MarkCompleteButton lessonKey={lk} />}

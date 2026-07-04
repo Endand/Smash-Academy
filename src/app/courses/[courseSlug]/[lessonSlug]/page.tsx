@@ -19,10 +19,19 @@ async function resolveLesson(
   courseSlug: string,
   lessonSlug: string
 ): Promise<{ courseId: string; lessonKey: string } | null> {
+  const supabase = await createClient();
+
   // Resolve courseId from courseSlug
   let courseId: string | null = SEED_SLUG_MAP[courseSlug] ?? null;
-  if (!courseId) {
-    const supabase = await createClient();
+  if (courseId) {
+    // Seed slug hit — but if the course was renamed, the old URL is dead
+    const { data } = await supabase
+      .from("site_content")
+      .select("value")
+      .eq("key", `course_${courseId}_slug`)
+      .maybeSingle();
+    if (data?.value && data.value !== courseSlug) courseId = null;
+  } else {
     const { data } = await supabase
       .from("site_content")
       .select("value")
@@ -41,8 +50,17 @@ async function resolveLesson(
   let lessonKey: string | null =
     courseId === "foundations" ? getStaticLessonKey(lessonSlug) : null;
 
+  if (lessonKey) {
+    // Static slug hit — but if the lesson was renamed, the old URL is dead
+    const { data } = await supabase
+      .from("site_content")
+      .select("value")
+      .eq("key", `${lessonKey}_slug`)
+      .maybeSingle();
+    if (data?.value && data.value !== lessonSlug) lessonKey = null;
+  }
+
   if (!lessonKey) {
-    const supabase = await createClient();
     const { data } = await supabase
       .from("site_content")
       .select("value")

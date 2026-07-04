@@ -19,6 +19,7 @@ import {
   type LiveSection,
 } from "@/hooks/use-course-structure";
 import { getCourseKeys, getCourseSlug, getCourseStatus, slugFromTitle, PROJECT_ICONS } from "@/lib/courses/course-utils";
+import { replaceSlugMapEntry } from "@/lib/courses/slug-sync";
 
 const LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
 const STATUSES = [
@@ -262,11 +263,8 @@ function SlugRow({ courseId, courseSlug }: { courseId: string; courseSlug: strin
   const applySlug = (slug: string) => {
     const clean = slug.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || courseSlug;
     updateContent(`course_${courseId}_slug`, clean);
-    // Add new slug → courseId to curriculum_slug_map so the dynamic route resolves it
-    const existing: Record<string, string> = (() => {
-      try { return JSON.parse(content["curriculum_slug_map"] ?? "{}"); } catch { return {}; }
-    })();
-    updateContent("curriculum_slug_map", JSON.stringify({ ...existing, [clean]: courseId }));
+    // Replace this course's entry in the map — old URLs stop resolving
+    updateContent("curriculum_slug_map", replaceSlugMapEntry(content["curriculum_slug_map"], clean, courseId));
     setEditing(false);
   };
 

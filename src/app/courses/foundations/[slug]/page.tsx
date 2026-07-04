@@ -12,12 +12,30 @@ interface Props {
 }
 
 async function resolveLessonKey(slug: string): Promise<string | null> {
+  const supabase = await createClient();
+
+  // This legacy route only serves URLs under /courses/foundations — if the
+  // course slug was renamed, every URL under the old prefix is dead.
+  const { data: courseSlugRow } = await supabase
+    .from("site_content")
+    .select("value")
+    .eq("key", "course_foundations_slug")
+    .maybeSingle();
+  if (courseSlugRow?.value && courseSlugRow.value !== "foundations") return null;
+
   // Static lesson lookup (fast, in-memory)
   const staticKey = getStaticLessonKey(slug);
-  if (staticKey) return staticKey;
+  if (staticKey) {
+    // Static slug hit — but if the lesson was renamed, the old URL is dead
+    const { data } = await supabase
+      .from("site_content")
+      .select("value")
+      .eq("key", `${staticKey}_slug`)
+      .maybeSingle();
+    if (!data?.value || data.value === slug) return staticKey;
+  }
 
   // Dynamic lesson lookup (Supabase — only when static lookup misses)
-  const supabase = await createClient();
   const { data } = await supabase
     .from("site_content")
     .select("value")
