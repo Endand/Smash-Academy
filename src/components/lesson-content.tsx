@@ -3,14 +3,14 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronLeft, ChevronRight, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check } from "lucide-react";
 import { useProgress } from "@/components/progress-provider";
 import { Editable } from "@/components/editable-text";
 import { useContentContext } from "@/components/content-provider";
 import { usePermissions } from "@/hooks/use-permissions";
-import { useCourseStructure, getEffectiveStatus } from "@/hooks/use-course-structure";
+import { useCourseStructure, getEffectiveStatus, parseJSON } from "@/hooks/use-course-structure";
 import { getStaticLesson } from "@/lib/courses/foundations-data";
-import { getCourseKeys, getCourseSlug } from "@/lib/courses/course-utils";
+import { getCourseKeys, getCourseSlug, slugFromTitle } from "@/lib/courses/course-utils";
 
 // ── Shared admin UI ───────────────────────────────────────────────────────────
 
@@ -34,6 +34,36 @@ function AddBtn({ label, onClick }: { label: string; onClick: () => void }) {
       <Plus size={11} />
       {label}
     </button>
+  );
+}
+
+function MoveBtns({ onMove, canUp, canDown }: { onMove: (dir: -1 | 1) => void; canUp: boolean; canDown: boolean }) {
+  const btnStyle: React.CSSProperties = {
+    background: "var(--surface-raised)",
+    border: "1px solid var(--border-strong)",
+    color: "var(--text-muted)",
+  };
+  return (
+    <>
+      <button
+        onClick={() => onMove(-1)}
+        disabled={!canUp}
+        title="Move up"
+        className="shrink-0 w-4 h-4 rounded flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-20 disabled:cursor-default"
+        style={btnStyle}
+      >
+        <ChevronUp size={9} />
+      </button>
+      <button
+        onClick={() => onMove(1)}
+        disabled={!canDown}
+        title="Move down"
+        className="shrink-0 w-4 h-4 rounded flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-20 disabled:cursor-default"
+        style={btnStyle}
+      >
+        <ChevronDown size={9} />
+      </button>
+    </>
   );
 }
 
@@ -333,6 +363,9 @@ function BlockRenderer({
   canEdit,
   canManage,
   onRemove,
+  onMove,
+  canMoveUp,
+  canMoveDown,
 }: {
   block: Block;
   lk: string;
@@ -340,6 +373,9 @@ function BlockRenderer({
   canEdit: boolean;
   canManage: boolean;
   onRemove: () => void;
+  onMove: (dir: -1 | 1) => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
 }) {
   const { content, updateContent } = useContentContext();
   const prefix = `${lk}_s${si}_blk${block.j}`;
@@ -347,14 +383,17 @@ function BlockRenderer({
   const lang = content[`${prefix}_lang`] ?? "";
   const caption = content[`${prefix}_caption`] ?? "";
 
+  const controls = canManage ? (
+    <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center gap-0.5">
+      <MoveBtns onMove={onMove} canUp={canMoveUp} canDown={canMoveDown} />
+      <RemoveBtn onClick={onRemove} title={`Remove ${block.type} block`} />
+    </div>
+  ) : null;
+
   if (block.type === "text") {
     return (
       <div className="group relative">
-        {canManage && (
-          <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-            <RemoveBtn onClick={onRemove} title="Remove paragraph" />
-          </div>
-        )}
+        {controls}
         {canEdit ? (
           <Editable
             as="p"
@@ -364,7 +403,7 @@ function BlockRenderer({
             style={{ color: "var(--text-muted)" }}
           />
         ) : (
-          <p className="leading-relaxed text-[15px]" style={{ color: "var(--text-muted)" }}>
+          <p className="leading-relaxed text-[15px]" style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>
             {renderWithLinks(blockContent || "New paragraph…")}
           </p>
         )}
@@ -376,11 +415,7 @@ function BlockRenderer({
     const displayLang = lang || "plaintext";
     return (
       <div className="group relative">
-        {canManage && (
-          <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-            <RemoveBtn onClick={onRemove} title="Remove code block" />
-          </div>
-        )}
+        {controls}
         {/* Header bar: language label + admin lang edit */}
         <div
           className="flex items-center justify-between px-4 py-1.5 rounded-t-[var(--radius-card)]"
@@ -419,11 +454,7 @@ function BlockRenderer({
     const url = blockContent;
     return (
       <div className="group relative">
-        {canManage && (
-          <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-            <RemoveBtn onClick={onRemove} title="Remove image" />
-          </div>
-        )}
+        {controls}
         {canEdit && (
           <div className="flex items-center gap-2 mb-2">
             <span className="font-mono text-[9px] uppercase tracking-widest opacity-40" style={{ color: "var(--text-muted)" }}>
@@ -469,11 +500,7 @@ function BlockRenderer({
   if (block.type === "quote") {
     return (
       <div className="group relative">
-        {canManage && (
-          <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-            <RemoveBtn onClick={onRemove} title="Remove quote" />
-          </div>
-        )}
+        {controls}
         <div
           className="px-4 py-3 text-[13px] leading-relaxed"
           style={{
@@ -486,7 +513,7 @@ function BlockRenderer({
           {canEdit ? (
             <Editable as="span" contentKey={`${prefix}_content`} fallback="Quote text here…" />
           ) : (
-            <span>{renderWithLinks(blockContent || "Quote text here…")}</span>
+            <span style={{ whiteSpace: "pre-wrap" }}>{renderWithLinks(blockContent || "Quote text here…")}</span>
           )}
         </div>
       </div>
@@ -539,6 +566,64 @@ function AddBlockMenu({
             </button>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Lesson URL slug row (admin only) ──────────────────────────────────────────
+
+function LessonSlugRow({
+  lk, courseId, courseSlug, urlSlug, fallbackTitle,
+}: {
+  lk: string;
+  courseId: string;
+  courseSlug: string;
+  urlSlug: string;
+  fallbackTitle: string;
+}) {
+  const { content, updateContent } = useContentContext();
+  const { isAdmin } = usePermissions();
+  const currentSlug = content[`${lk}_slug`] ?? urlSlug;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(currentSlug);
+
+  if (!isAdmin) return null;
+
+  const applySlug = (slug: string) => {
+    const clean = slug.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || currentSlug;
+    updateContent(`${lk}_slug`, clean);
+    // Register in the course's slug map so the lesson route resolves the new URL
+    const map = parseJSON<Record<string, string>>(content[`${courseId}_slug_map`], {});
+    updateContent(`${courseId}_slug_map`, JSON.stringify({ ...map, [clean]: lk }));
+    setEditing(false);
+  };
+
+  const syncFromTitle = () => applySlug(slugFromTitle(content[`${lk}_title`] ?? fallbackTitle));
+
+  return (
+    <div className="-mt-2 mb-6 flex items-center gap-2 font-mono text-[11px] flex-wrap" style={{ color: "var(--text-muted)" }}>
+      <span className="opacity-50">URL:</span>
+      {editing ? (
+        <>
+          <span className="opacity-40">/courses/{courseSlug}/</span>
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") applySlug(draft); if (e.key === "Escape") setEditing(false); }}
+            className="px-2 py-0.5 bg-transparent outline-none border-b w-40"
+            style={{ borderColor: "var(--accent-medium)", color: "var(--text)" }}
+          />
+          <button onClick={() => applySlug(draft)} className="px-2 py-0.5 cursor-pointer" style={{ color: "var(--accent-medium)" }}>Save</button>
+          <button onClick={() => setEditing(false)} className="px-2 py-0.5 cursor-pointer opacity-50">Cancel</button>
+        </>
+      ) : (
+        <>
+          <span>/courses/{courseSlug}/<span style={{ color: "var(--text)" }}>{currentSlug}</span></span>
+          <button onClick={() => { setDraft(currentSlug); setEditing(true); }} className="px-2 py-0.5 cursor-pointer hover:opacity-100 opacity-40 transition-opacity">Edit</button>
+          <button onClick={syncFromTitle} className="px-2 py-0.5 cursor-pointer hover:opacity-100 opacity-40 transition-opacity">Sync from title</button>
+        </>
       )}
     </div>
   );
@@ -673,6 +758,25 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
   };
   const deleteSection = (idx: number) => updateContent(`${lk}_s${idx}_deleted`, "1");
 
+  // Section display order: stored order first, then anything new appended
+  const sectionOrderStored = parseJSON<string[]>(content[`${lk}_section_order`], []);
+  const sectionIds = sections.map((s) => String(s.i));
+  const sectionOrderIds = [
+    ...sectionOrderStored.filter((id) => sectionIds.includes(id)),
+    ...sectionIds.filter((id) => !sectionOrderStored.includes(id)),
+  ];
+  const orderedSections = sectionOrderIds
+    .map((id) => sections.find((s) => String(s.i) === id))
+    .filter((s): s is SectionEntry => !!s);
+  const moveSection = (sectionIdx: number, dir: -1 | 1) => {
+    const idx = sectionOrderIds.indexOf(String(sectionIdx));
+    const j = idx + dir;
+    if (idx < 0 || j < 0 || j >= sectionOrderIds.length) return;
+    const next = [...sectionOrderIds];
+    [next[idx], next[j]] = [next[j], next[idx]];
+    updateContent(`${lk}_section_order`, JSON.stringify(next));
+  };
+
   const addBlock = (si: number, currentBlkCount: number, type: BlockType) => {
     const j = currentBlkCount;
     updateContent(`${lk}_s${si}_blk_count`, String(j + 1));
@@ -735,6 +839,25 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
   };
   const deleteResource = (idx: number) => updateContent(`${lk}_res${idx}_deleted`, "1");
 
+  // Resource display order
+  const resOrderStored = parseJSON<string[]>(content[`${lk}_res_order`], []);
+  const resIds = resItems.map((r) => String(r.i));
+  const resOrderIds = [
+    ...resOrderStored.filter((id) => resIds.includes(id)),
+    ...resIds.filter((id) => !resOrderStored.includes(id)),
+  ];
+  const orderedResItems = resOrderIds
+    .map((id) => resItems.find((r) => String(r.i) === id))
+    .filter((r): r is ResEntry => !!r);
+  const moveResource = (resIdx: number, dir: -1 | 1) => {
+    const idx = resOrderIds.indexOf(String(resIdx));
+    const j = idx + dir;
+    if (idx < 0 || j < 0 || j >= resOrderIds.length) return;
+    const next = [...resOrderIds];
+    [next[idx], next[j]] = [next[j], next[idx]];
+    updateContent(`${lk}_res_order`, JSON.stringify(next));
+  };
+
   // ── "Coming Soon" gate for non-editors (also covers removed courses) ─────
   const courseDeleted = content[`course_${courseId}_deleted`] === "1";
   if ((status !== "published" || courseDeleted) && !canPublish) {
@@ -776,6 +899,15 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
         <LessonStatusBadge lessonKey={lk} hasStaticContent={!!d} />
       </div>
 
+      {/* Lesson URL (admin only) */}
+      <LessonSlugRow
+        lk={lk}
+        courseId={courseId}
+        courseSlug={courseSlug}
+        urlSlug={slug}
+        fallbackTitle={staticLesson?.titleFallback ?? "Lesson"}
+      />
+
       {/* Introduction */}
       {canEdit ? (
         <Editable
@@ -786,7 +918,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
           style={{ color: "var(--text-muted)" }}
         />
       ) : (
-        <p className="leading-relaxed text-[15px] mb-12" style={{ color: "var(--text-muted)" }}>
+        <p className="leading-relaxed text-[15px] mb-12" style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>
           {renderWithLinks(content[`${lk}_intro`] ?? (d?.introduction ?? ""))}
         </p>
       )}
@@ -808,7 +940,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
 
       {/* ── Main Sections ────────────────────────────────── */}
       <div className="flex flex-col gap-10 mb-14">
-        {sections.map(({ i, def, paraCount, blkCount }) => {
+        {orderedSections.map(({ i, def, paraCount, blkCount }, secIdx) => {
           // Build extra blocks list
           const blocks: Block[] = [];
           for (let j = 0; j < blkCount; j++) {
@@ -817,10 +949,33 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
             blocks.push({ j, type });
           }
 
+          // Unified item order: paragraphs and blocks share one movable stream,
+          // so a quote/code block can sit anywhere between paragraphs.
+          const paraIds: string[] = [];
+          for (let j = 0; j < paraCount; j++) {
+            if (content[`${lk}_s${i}_p${j}_deleted`] === "1") continue;
+            paraIds.push(`p${j}`);
+          }
+          const allItemIds = [...paraIds, ...blocks.map((b) => `blk${b.j}`)];
+          const itemOrderStored = parseJSON<string[]>(content[`${lk}_s${i}_item_order`], []);
+          const itemOrder = [
+            ...itemOrderStored.filter((id) => allItemIds.includes(id)),
+            ...allItemIds.filter((id) => !itemOrderStored.includes(id)),
+          ];
+          const moveItem = (id: string, dir: -1 | 1) => {
+            const idx = itemOrder.indexOf(id);
+            const target = idx + dir;
+            if (idx < 0 || target < 0 || target >= itemOrder.length) return;
+            const next = [...itemOrder];
+            [next[idx], next[target]] = [next[target], next[idx]];
+            updateContent(`${lk}_s${i}_item_order`, JSON.stringify(next));
+          };
+
           return (
             <section key={i} className="group relative">
               {canManage && (
-                <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center gap-0.5">
+                  <MoveBtns onMove={(dir) => moveSection(i, dir)} canUp={secIdx > 0} canDown={secIdx < orderedSections.length - 1} />
                   <RemoveBtn onClick={() => deleteSection(i)} title="Remove section" />
                 </div>
               )}
@@ -828,14 +983,39 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                 <Editable as="span" contentKey={`${lk}_s${i}_heading`} fallback={def?.heading ?? "New Section"} />
               </h2>
               <div className="flex flex-col gap-4">
-                {/* Original paragraphs */}
-                {Array.from({ length: paraCount }, (_, j) => {
-                  if (content[`${lk}_s${i}_p${j}_deleted`] === "1") return null;
+                {itemOrder.map((itemId, itemIdx) => {
+                  const canUp = itemIdx > 0;
+                  const canDown = itemIdx < itemOrder.length - 1;
+
+                  // Rich content block
+                  if (itemId.startsWith("blk")) {
+                    const j = parseInt(itemId.slice(3), 10);
+                    const block = blocks.find((b) => b.j === j);
+                    if (!block) return null;
+                    return (
+                      <BlockRenderer
+                        key={itemId}
+                        block={block}
+                        lk={lk}
+                        si={i}
+                        canEdit={canEdit}
+                        canManage={canManage}
+                        onRemove={() => deleteBlock(i, block.j)}
+                        onMove={(dir) => moveItem(itemId, dir)}
+                        canMoveUp={canUp}
+                        canMoveDown={canDown}
+                      />
+                    );
+                  }
+
+                  // Original paragraph
+                  const j = parseInt(itemId.slice(1), 10);
                   const paraFallback = def?.paragraphs[j] ?? "";
                   return (
-                    <div key={j} className="group/p relative">
+                    <div key={itemId} className="group/p relative">
                       {canManage && (
-                        <div className="absolute -top-1 -right-1 opacity-0 group-hover/p:opacity-100 transition-opacity z-10">
+                        <div className="absolute -top-1 -right-1 opacity-0 group-hover/p:opacity-100 transition-opacity z-10 flex items-center gap-0.5">
+                          <MoveBtns onMove={(dir) => moveItem(itemId, dir)} canUp={canUp} canDown={canDown} />
                           <RemoveBtn onClick={() => deleteParag(i, j)} title="Remove paragraph" />
                         </div>
                       )}
@@ -848,26 +1028,13 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                           style={{ color: "var(--text-muted)" }}
                         />
                       ) : (
-                        <p className="leading-relaxed text-[15px]" style={{ color: "var(--text-muted)" }}>
+                        <p className="leading-relaxed text-[15px]" style={{ color: "var(--text-muted)", whiteSpace: "pre-wrap" }}>
                           {renderWithLinks(content[`${lk}_s${i}_p${j}`] ?? paraFallback)}
                         </p>
                       )}
                     </div>
                   );
                 })}
-
-                {/* Rich content blocks */}
-                {blocks.map((block) => (
-                  <BlockRenderer
-                    key={block.j}
-                    block={block}
-                    lk={lk}
-                    si={i}
-                    canEdit={canEdit}
-                    canManage={canManage}
-                    onRemove={() => deleteBlock(i, block.j)}
-                  />
-                ))}
               </div>
 
               {/* Existing note / quote */}
@@ -885,7 +1052,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                     {canEdit ? (
                       <Editable as="span" contentKey={`${lk}_s${i}_note`} fallback={def?.note ?? ""} />
                     ) : (
-                      <span>{renderWithLinks(content[`${lk}_s${i}_note`] ?? (def?.note ?? ""))}</span>
+                      <span style={{ whiteSpace: "pre-wrap" }}>{renderWithLinks(content[`${lk}_s${i}_note`] ?? (def?.note ?? ""))}</span>
                     )}
                   </div>
                 </div>
@@ -969,7 +1136,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
         <SectionLabel label="Additional Resources" />
         {resItems.length > 0 ? (
           <ul className="flex flex-col gap-3">
-            {resItems.map(({ i, defTitle, defUrl, defDesc }) => {
+            {orderedResItems.map(({ i, defTitle, defUrl, defDesc }, resPos) => {
               const url = content[`${lk}_res${i}_url`] ?? defUrl;
               const isNew = i >= defaultResCount;
               return (
@@ -988,7 +1155,12 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
                       </div>
                     )}
                   </div>
-                  {canManage && <RemoveBtn onClick={() => deleteResource(i)} title="Remove resource" />}
+                  {canManage && (
+                    <span className="flex items-center gap-0.5 shrink-0">
+                      <MoveBtns onMove={(dir) => moveResource(i, dir)} canUp={resPos > 0} canDown={resPos < orderedResItems.length - 1} />
+                      <RemoveBtn onClick={() => deleteResource(i)} title="Remove resource" />
+                    </span>
+                  )}
                 </li>
               );
             })}

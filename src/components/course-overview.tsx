@@ -372,8 +372,8 @@ export function CourseOverview({ courseId }: { courseId: string }) {
                   border: `1px solid ${courseStatus === "available" ? "var(--accent-medium)" : "var(--border-strong)"}`,
                 }}
               >
-                <option value="available">Available</option>
-                <option value="soon">Coming Soon</option>
+                <option value="available">Published</option>
+                <option value="soon">Soon</option>
               </select>
               <ChevronDown size={8} className="absolute right-1 pointer-events-none" style={{ color: courseStatus === "available" ? "var(--accent-medium)" : "var(--text-muted)" }} />
             </div>

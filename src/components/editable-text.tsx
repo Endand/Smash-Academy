@@ -18,7 +18,7 @@ export function Editable({ contentKey, fallback, as = "span", className, style }
   const value = content[contentKey] ?? fallback;
 
   if (!can("edit_content")) {
-    return createElement(as, { className, style }, value);
+    return createElement(as, { className, style: { whiteSpace: "pre-wrap", ...style } }, value);
   }
 
   return (
@@ -48,16 +48,17 @@ function AdminField({ tag, value, className, style, onSave }: AdminFieldProps) {
   // Sync real-time updates from other sessions while not actively typing
   useEffect(() => {
     if (ref.current && !isEditing.current && saved.current !== value) {
-      ref.current.textContent = value;
+      ref.current.innerText = value;
       saved.current = value;
     }
   }, [value]);
 
   const handleBlur = useCallback(() => {
     isEditing.current = false;
-    const next = ref.current?.textContent?.trim() ?? "";
+    // innerText (not textContent) so Shift+Enter line breaks survive as \n
+    const next = ref.current?.innerText?.replace(/\n+$/, "").trim() ?? "";
     if (!next) {
-      if (ref.current) ref.current.textContent = saved.current;
+      if (ref.current) ref.current.innerText = saved.current;
       return;
     }
     if (next !== saved.current) {
@@ -73,7 +74,7 @@ function AdminField({ tag, value, className, style, onSave }: AdminFieldProps) {
     }
     if (e.key === "Escape") {
       const el = e.currentTarget as HTMLElement;
-      el.textContent = saved.current;
+      el.innerText = saved.current;
       el.blur();
     }
   }, []);
@@ -82,7 +83,7 @@ function AdminField({ tag, value, className, style, onSave }: AdminFieldProps) {
     ref: (el: HTMLElement | null) => { ref.current = el; },
     "data-admin-field": "",
     className,
-    style,
+    style: { whiteSpace: "pre-wrap", ...style },
     contentEditable: true,
     suppressContentEditableWarning: true,
     spellCheck: false,
