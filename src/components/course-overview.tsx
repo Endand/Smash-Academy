@@ -136,7 +136,7 @@ function LessonRow({
         contentKey={`${lesson.lessonKey}_title`}
         fallback={lesson.titleFallback}
         className="flex-1 text-sm"
-        style={{ color: status === "draft" ? "var(--text-muted)" : "var(--text)", opacity: status === "draft" ? 0.5 : 1 }}
+        style={{ color: "var(--text)" }}
       />
       {isProject && (
         <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-tag)] hidden sm:inline" style={{ color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}>
@@ -190,37 +190,65 @@ function LessonRow({
 function AddLessonBtn({ courseId, section }: { courseId: string; section: LiveSection }) {
   const { content, updateContent } = useContentContext();
 
-  const handleAdd = () => {
+  const handleAdd = (kind: "lesson" | "project") => {
     const ts = Date.now();
     const lId = `ldyn_${ts}`;
     const lk = `${courseId}_${lId}`;
     const short = ts.toString().slice(-6);
-    const slug = `new-lesson-${short}`;
+    const slug = kind === "project" ? `new-project-${short}` : `new-lesson-${short}`;
 
     const currentIds: string[] = parseJSON(
       content[`${section.sectionKey}_lesson_ids`],
       section.lessons.map((l) => l.lessonKey.replace(`${courseId}_`, ""))
     );
     updateContent(`${section.sectionKey}_lesson_ids`, JSON.stringify([...currentIds, lId]));
-    updateContent(`${lk}_title`, "New Lesson");
+    updateContent(`${lk}_title`, kind === "project" ? "New Project" : "New Lesson");
     updateContent(`${lk}_status`, "draft");
-    updateContent(`${lk}_icon`, "BookOpen");
+    updateContent(`${lk}_icon`, kind === "project" ? "Wrench" : "BookOpen");
     updateContent(`${lk}_slug`, slug);
 
     const slugMap: Record<string, string> = parseJSON(content[`${courseId}_slug_map`], {});
     updateContent(`${courseId}_slug_map`, JSON.stringify({ ...slugMap, [slug]: lk }));
+
+    if (kind === "project") {
+      // Project template (Odin Project style): overview body + step-by-step assignment
+      updateContent(`${lk}_intro`, "Time to put what you've learned into practice. In this project, you'll build something real from scratch.");
+      updateContent(`${lk}_section_count`, "1");
+      updateContent(`${lk}_s0_heading`, "Overview");
+      updateContent(`${lk}_s0_p0`, "Describe the project here — what the student will build, what the finished result should look like, and which earlier lessons it draws on.");
+      updateContent(`${lk}_s0_para_count`, "1");
+      updateContent(`${lk}_assign_desc`, "Complete the following steps. Don't worry about making it perfect — finishing is what counts.");
+      updateContent(`${lk}_assign_count`, "3");
+      updateContent(`${lk}_assign_0`, "Set up: get the files and tools from the lessons ready.");
+      updateContent(`${lk}_assign_1`, "Build: work through the main task described in the overview.");
+      updateContent(`${lk}_assign_2`, "Share: post your finished result in the SMA Discord for feedback.");
+    }
   };
 
+  const btnClass = "flex-1 flex items-center justify-center gap-1.5 px-4 py-2 font-mono text-[10px] uppercase tracking-widest cursor-pointer transition-colors";
+
   return (
-    <button
-      onClick={handleAdd}
-      className="w-full flex items-center justify-center gap-1.5 px-4 py-2 font-mono text-[10px] uppercase tracking-widest cursor-pointer transition-colors"
-      style={{ borderTop: "1px dashed var(--border-strong)", color: "var(--text-muted)" }}
-      onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent-medium)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
-    >
-      <Plus size={10} /> Add Lesson
-    </button>
+    <div className="flex" style={{ borderTop: "1px dashed var(--border-strong)" }}>
+      <button
+        onClick={() => handleAdd("lesson")}
+        className={btnClass}
+        style={{ color: "var(--text-muted)" }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent-medium)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+      >
+        <Plus size={10} /> Add Lesson
+      </button>
+      <div className="w-px self-stretch" style={{ background: "var(--border-color)" }} />
+      <button
+        onClick={() => handleAdd("project")}
+        className={btnClass}
+        style={{ color: "var(--text-muted)" }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--accent-medium)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+      >
+        <Plus size={10} /> Add Project
+      </button>
+    </div>
   );
 }
 

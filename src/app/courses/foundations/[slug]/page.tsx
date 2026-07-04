@@ -26,9 +26,20 @@ async function resolveLessonKey(slug: string): Promise<string | null> {
   if (data?.value) {
     try {
       const slugMap: Record<string, string> = JSON.parse(data.value);
-      return slugMap[slug] ?? null;
+      const mapped = slugMap[slug];
+      if (mapped) return mapped;
     } catch { /* invalid JSON */ }
   }
+
+  // Last resort: reverse-lookup a lesson whose own `<lk>_slug` key matches
+  const { data: rows } = await supabase
+    .from("site_content")
+    .select("key")
+    .like("key", "foundations\\_%\\_slug")
+    .eq("value", slug)
+    .limit(1);
+  if (rows?.[0]) return rows[0].key.replace(/_slug$/, "");
+
   return null;
 }
 

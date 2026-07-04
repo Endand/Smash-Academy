@@ -54,6 +54,18 @@ async function resolveLesson(
         lessonKey = m[lessonSlug] ?? null;
       } catch { /* invalid JSON */ }
     }
+
+    // Last resort: reverse-lookup a lesson whose own `<lk>_slug` key matches,
+    // covering the window where the slug map write hasn't landed yet
+    if (!lessonKey) {
+      const { data: rows } = await supabase
+        .from("site_content")
+        .select("key")
+        .like("key", `${courseId}\\_%\\_slug`)
+        .eq("value", lessonSlug)
+        .limit(1);
+      if (rows?.[0]) lessonKey = rows[0].key.replace(/_slug$/, "");
+    }
   }
   if (!lessonKey) return null;
 

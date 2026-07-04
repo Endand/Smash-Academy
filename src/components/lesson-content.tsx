@@ -923,20 +923,22 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
         </p>
       )}
 
-      {/* ── Lesson Overview ──────────────────────────────── */}
-      <div className="mb-12 px-5 pt-4 pb-5" style={{ background: "var(--surface)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)" }}>
-        <SectionLabel label="Lesson Overview" />
-        <ul className="flex flex-col gap-2.5">
-          {outcomes.map(({ i, fallback }) => (
-            <li key={i} className="group flex items-start gap-2 text-sm text-[var(--text-muted)]">
-              <span className="shrink-0 mt-0.5" style={{ color: "var(--accent-medium)" }}>▸</span>
-              <Editable as="span" contentKey={`${lk}_outcome_${i}`} fallback={fallback} className="flex-1" />
-              {canManage && <RemoveBtn onClick={() => deleteOutcome(i)} title="Remove outcome" />}
-            </li>
-          ))}
-        </ul>
-        {canManage && <AddBtn label="Add Outcome" onClick={addOutcome} />}
-      </div>
+      {/* ── Lesson Overview (hidden for learners when empty) ── */}
+      {(outcomes.length > 0 || canManage) && (
+        <div className="mb-12 px-5 pt-4 pb-5" style={{ background: "var(--surface)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)" }}>
+          <SectionLabel label="Lesson Overview" />
+          <ul className="flex flex-col gap-2.5">
+            {outcomes.map(({ i, fallback }) => (
+              <li key={i} className="group flex items-start gap-2 text-sm text-[var(--text-muted)]">
+                <span className="shrink-0 mt-0.5" style={{ color: "var(--accent-medium)" }}>▸</span>
+                <Editable as="span" contentKey={`${lk}_outcome_${i}`} fallback={fallback} className="flex-1" />
+                {canManage && <RemoveBtn onClick={() => deleteOutcome(i)} title="Remove outcome" />}
+              </li>
+            ))}
+          </ul>
+          {canManage && <AddBtn label="Add Outcome" onClick={addOutcome} />}
+        </div>
+      )}
 
       {/* ── Main Sections ────────────────────────────────── */}
       <div className="flex flex-col gap-10 mb-14">
