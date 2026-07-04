@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Check, ChevronDown } from "lucide-react";
+import { Plus, X, Check, ChevronDown, Search } from "lucide-react";
 import { Nav } from "@/components/nav";
 import { useAuth } from "@/components/auth-provider";
 import { useContentContext } from "@/components/content-provider";
@@ -303,6 +303,7 @@ interface UserRow {
 function UsersSection({ roles }: { roles: string[] }) {
   const [users, setUsers] = useState<UserRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -333,11 +334,16 @@ function UsersSection({ roles }: { roles: string[] }) {
     }
   };
 
+  const q = query.trim().toLowerCase();
+  const results = q ? (users ?? []).filter((u) => u.username.toLowerCase().includes(q)).slice(0, 20) : [];
+  const admins = (users ?? []).filter((u) => u.is_admin);
+  const usersInRole = (role: string) => (users ?? []).filter((u) => !u.is_admin && u.role === role);
+
   return (
     <div className="mt-14">
       <h2 className="text-xl font-extralight tracking-wide text-[var(--text)] mb-2">Users</h2>
       <p className="text-[12px] mb-5" style={{ color: "var(--text-muted)", opacity: 0.65 }}>
-        Assign a role to grant its permissions. Admins always have full access.
+        Search for a user to assign a role. Users without a role only appear in search results.
       </p>
 
       {error && (
@@ -345,45 +351,138 @@ function UsersSection({ roles }: { roles: string[] }) {
       )}
 
       {users && (
-        <div style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)", overflow: "hidden" }}>
-          {users.map((u, i) => (
-            <div
-              key={u.id}
-              className="flex items-center justify-between gap-4 px-5 py-3"
-              style={{ borderBottom: i < users.length - 1 ? "1px solid var(--border-color)" : "none" }}
-            >
-              <span className="text-sm font-mono" style={{ color: "var(--text)" }}>@{u.username}</span>
-              {u.is_admin ? (
-                <span
-                  className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-tag)]"
-                  style={{ color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}
-                >
-                  Admin
-                </span>
-              ) : (
-                <div className="relative inline-flex items-center">
-                  <select
-                    value={u.role ?? ""}
-                    onChange={(e) => assignRole(u.id, e.target.value)}
-                    className="appearance-none font-mono text-[10px] uppercase tracking-widest px-2 py-1 pr-6 rounded-[var(--radius-tag)] cursor-pointer bg-transparent outline-none"
-                    style={{
-                      color: u.role ? "var(--accent-medium)" : "var(--text-muted)",
-                      border: `1px solid ${u.role ? "var(--accent-medium)" : "var(--border-strong)"}`,
-                    }}
-                  >
-                    <option value="">No role</option>
-                    {roles.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                  <ChevronDown size={8} className="absolute right-1.5 pointer-events-none" style={{ color: "var(--text-muted)" }} />
-                </div>
+        <>
+          {/* Search */}
+          <div
+            className="flex items-center gap-2.5 px-4 mb-6"
+            style={{ border: "1px solid var(--border-strong)", borderRadius: "var(--radius-card)" }}
+          >
+            <Search size={13} className="shrink-0" style={{ color: "var(--text-muted)" }} />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search users by username…"
+              className="flex-1 py-2.5 bg-transparent outline-none text-sm"
+              style={{ color: "var(--text)" }}
+            />
+            {query && (
+              <button onClick={() => setQuery("")} className="cursor-pointer shrink-0" style={{ color: "var(--text-muted)" }}>
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          {q ? (
+            /* Search results — every user is findable here, role or not */
+            <div style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)", overflow: "hidden" }}>
+              {results.map((u, i) => (
+                <UserRowItem key={u.id} user={u} roles={roles} onAssign={assignRole} isLast={i === results.length - 1} />
+              ))}
+              {results.length === 0 && (
+                <p className="px-5 py-8 text-center text-[13px] italic" style={{ color: "var(--text-muted)", opacity: 0.45 }}>
+                  No users matching “{query.trim()}”.
+                </p>
               )}
             </div>
-          ))}
-          {users.length === 0 && (
-            <p className="px-5 py-8 text-center text-[13px] italic" style={{ color: "var(--text-muted)", opacity: 0.45 }}>
-              No users found.
-            </p>
+          ) : (
+            /* Grouped by role — users without a role stay hidden */
+            <div className="flex flex-col gap-8">
+              <RoleGroup
+                label="Admins"
+                users={admins}
+                roles={roles}
+                onAssign={assignRole}
+                emptyNote="No admins."
+              />
+              {roles.map((role) => (
+                <RoleGroup
+                  key={role}
+                  label={role}
+                  users={usersInRole(role)}
+                  roles={roles}
+                  onAssign={assignRole}
+                  emptyNote="No users with this role yet — search above to assign it."
+                />
+              ))}
+              {roles.length === 0 && (
+                <p className="text-[13px] italic" style={{ color: "var(--text-muted)", opacity: 0.5 }}>
+                  No roles defined yet — add one in the table above.
+                </p>
+              )}
+            </div>
           )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function RoleGroup({
+  label, users, roles, onAssign, emptyNote,
+}: {
+  label: string;
+  users: UserRow[];
+  roles: string[];
+  onAssign: (userId: string, role: string) => void;
+  emptyNote: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-4 mb-3">
+        <span className="font-mono text-[11px] uppercase tracking-widest whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+          {label} <span style={{ opacity: 0.5 }}>({users.length})</span>
+        </span>
+        <div className="h-px flex-1 bg-[var(--border-color)]" />
+      </div>
+      {users.length > 0 ? (
+        <div style={{ border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)", overflow: "hidden" }}>
+          {users.map((u, i) => (
+            <UserRowItem key={u.id} user={u} roles={roles} onAssign={onAssign} isLast={i === users.length - 1} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-[12px] italic" style={{ color: "var(--text-muted)", opacity: 0.45 }}>{emptyNote}</p>
+      )}
+    </div>
+  );
+}
+
+function UserRowItem({
+  user, roles, onAssign, isLast,
+}: {
+  user: UserRow;
+  roles: string[];
+  onAssign: (userId: string, role: string) => void;
+  isLast: boolean;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between gap-4 px-5 py-3"
+      style={{ borderBottom: !isLast ? "1px solid var(--border-color)" : "none" }}
+    >
+      <span className="text-sm font-mono" style={{ color: "var(--text)" }}>@{user.username}</span>
+      {user.is_admin ? (
+        <span
+          className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-tag)]"
+          style={{ color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}
+        >
+          Admin
+        </span>
+      ) : (
+        <div className="relative inline-flex items-center">
+          <select
+            value={user.role ?? ""}
+            onChange={(e) => onAssign(user.id, e.target.value)}
+            className="appearance-none font-mono text-[10px] uppercase tracking-widest px-2 py-1 pr-6 rounded-[var(--radius-tag)] cursor-pointer bg-transparent outline-none"
+            style={{
+              color: user.role ? "var(--accent-medium)" : "var(--text-muted)",
+              border: `1px solid ${user.role ? "var(--accent-medium)" : "var(--border-strong)"}`,
+            }}
+          >
+            <option value="">No role</option>
+            {roles.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <ChevronDown size={8} className="absolute right-1.5 pointer-events-none" style={{ color: "var(--text-muted)" }} />
         </div>
       )}
     </div>
