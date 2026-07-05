@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronLeft, ChevronRight, ChevronUp, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check, Copy } from "lucide-react";
 import { useProgress } from "@/components/progress-provider";
 import { Editable } from "@/components/editable-text";
 import { useContentContext } from "@/components/content-provider";
@@ -309,6 +309,34 @@ function renderWithLinks(text: string): React.ReactNode[] {
   return parts.length ? parts : [text];
 }
 
+// ── Copy-to-clipboard for code blocks ─────────────────────────────────────────
+
+function CopyCodeBtn({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable (http/permissions) — silently ignore */
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copy code"
+      className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest cursor-pointer transition-colors shrink-0"
+      style={{ color: copied ? "#43b581" : "#72767d" }}
+    >
+      {copied ? <Check size={11} strokeWidth={2.5} /> : <Copy size={11} strokeWidth={1.5} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 // ── Image upload to Supabase Storage ──────────────────────────────────────────
 
 function ImageUploadBtn({ onUploaded }: { onUploaded: (url: string) => void }) {
@@ -417,9 +445,9 @@ function BlockRenderer({
     return (
       <div className="group relative">
         {controls}
-        {/* Header bar: language label + admin lang edit */}
+        {/* Header bar: language label + copy button */}
         <div
-          className="flex items-center justify-between px-4 py-1.5 rounded-t-[var(--radius-card)]"
+          className="flex items-center justify-between gap-3 px-4 py-1.5 rounded-t-[var(--radius-card)]"
           style={{ background: "#232428", borderBottom: "1px solid #1a1b1e" }}
         >
           {canEdit ? (
@@ -435,6 +463,7 @@ function BlockRenderer({
               {displayLang}
             </span>
           )}
+          <CopyCodeBtn code={blockContent || "// code here"} />
         </div>
         {/* Code body */}
         <div className="overflow-x-auto rounded-b-[var(--radius-card)]" style={{ background: "#313338" }}>
@@ -1111,6 +1140,31 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
         </div>
       )}
 
+      {/* ── Table of contents ────────────────────────────── */}
+      {orderedSections.length >= 2 && (
+        <nav className="mb-12" aria-label="Lesson contents">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)] mb-3 opacity-60">
+            Contents
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {orderedSections.map(({ i, def }, tocIdx) => (
+              <li key={i} className="flex items-baseline gap-2.5">
+                <span className="shrink-0 font-mono text-[9px] opacity-40" style={{ color: "var(--text-muted)" }}>
+                  {String(tocIdx + 1).padStart(2, "0")}
+                </span>
+                <a
+                  href={`#section-${i}`}
+                  className="text-[13px] transition-colors hover:text-[var(--accent-medium)]"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  {content[`${lk}_s${i}_heading`] ?? def?.heading ?? "New Section"}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
+
       {/* ── Main Sections ────────────────────────────────── */}
       <div className="flex flex-col gap-10 mb-14">
         {orderedSections.map(({ i, def, paraCount, blkCount }, secIdx) => {
@@ -1145,7 +1199,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
           };
 
           return (
-            <section key={i} className="group relative">
+            <section key={i} id={`section-${i}`} className="group relative" style={{ scrollMarginTop: "5rem" }}>
               {canManage && (
                 <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center gap-0.5">
                   <MoveBtns onMove={(dir) => moveSection(i, dir)} canUp={secIdx > 0} canDown={secIdx < orderedSections.length - 1} />

@@ -330,6 +330,8 @@ export function CourseOverview({ courseId }: { courseId: string }) {
   );
   const completedCount = publishedLessons.filter((l) => completed.has(l.lessonKey)).length;
   const progressPct = publishedLessons.length ? Math.round((completedCount / publishedLessons.length) * 100) : 0;
+  // First published lesson not yet completed — target of "continue where you left off"
+  const nextLesson = publishedLessons.find((l) => !completed.has(l.lessonKey));
 
   const moveSection = (sId: string, dir: -1 | 1) => {
     const ids = getSectionIdList(courseId, content);
@@ -426,6 +428,23 @@ export function CourseOverview({ courseId }: { courseId: string }) {
             <div className="h-1 rounded-full overflow-hidden" style={{ background: "var(--surface-raised)", border: "1px solid var(--border-color)" }}>
               <div className="h-full rounded-full transition-all duration-300" style={{ width: `${progressPct}%`, background: "var(--accent-medium)" }} />
             </div>
+          </div>
+        )}
+        {signedIn && nextLesson && (
+          <div className="mt-5">
+            <Link
+              href={`/courses/${courseSlug}/${nextLesson.slug}`}
+              className="inline-flex items-center gap-2 px-5 py-2 font-mono text-[11px] uppercase tracking-widest rounded-[var(--radius-button)] transition-opacity hover:opacity-85"
+              style={{ background: "var(--accent)", color: "#fff" }}
+            >
+              {completedCount === 0 ? "Start Course" : "Continue Where You Left Off"}
+              <span aria-hidden>→</span>
+            </Link>
+            {completedCount > 0 && (
+              <p className="mt-1.5 font-mono text-[10px]" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
+                Next: {content[`${nextLesson.lessonKey}_title`] ?? nextLesson.titleFallback}
+              </p>
+            )}
           </div>
         )}
       </div>

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useTheme } from "@/components/theme-provider";
 import { Editable } from "@/components/editable-text";
 import { useContentContext } from "@/components/content-provider";
+import { useProgress } from "@/components/progress-provider";
+import { buildCourseStructure, getEffectiveStatus } from "@/lib/courses/course-structure";
 import {
   getCourseKeys,
   getCourseSlug,
@@ -37,6 +39,7 @@ function parseJSON<T>(str: string | undefined, fallback: T): T {
 export function CurriculumPreview() {
   const { content } = useContentContext();
   const { theme } = useTheme();
+  const { completed, signedIn } = useProgress();
   const filled = theme === "light";
 
   const courseIds: string[] = parseJSON(content["curriculum_course_ids"], SEED_COURSE_IDS);
@@ -63,6 +66,15 @@ export function CurriculumPreview() {
             const status = getCourseStatus(courseId, content);
             const slug = getCourseSlug(courseId, content);
             const isAvailable = status === "available";
+
+            // Learner progress at a glance (signed-in, started courses only)
+            const published = signedIn && isAvailable
+              ? buildCourseStructure(courseId, content).allLessons.filter(
+                  (l) => getEffectiveStatus(l.lessonKey, l.hasStaticContent, content) === "published"
+                )
+              : [];
+            const doneCount = published.filter((l) => completed.has(l.lessonKey)).length;
+            const showProgress = doneCount > 0 && published.length > 0;
 
             const card = (
               <div
@@ -96,6 +108,17 @@ export function CurriculumPreview() {
                   as="p"
                   className="text-sm text-[var(--text-muted)] leading-relaxed"
                 />
+                {showProgress && (
+                  <div className="mt-auto flex items-center gap-2.5 font-mono text-[10px]" style={{ color: "var(--text-muted)" }}>
+                    <div className="h-1 flex-1 rounded-full overflow-hidden" style={{ background: "var(--surface-raised)", border: "1px solid var(--border-color)" }}>
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${Math.round((doneCount / published.length) * 100)}%`, background: "var(--accent-medium)" }}
+                      />
+                    </div>
+                    <span className="shrink-0">{doneCount} / {published.length}</span>
+                  </div>
+                )}
               </div>
             );
 
