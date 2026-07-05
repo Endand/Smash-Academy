@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ChevronLeft, ChevronRight, ChevronUp, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check, Copy } from "lucide-react";
 import { useProgress } from "@/components/progress-provider";
@@ -912,6 +913,20 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations" }: Pro
   const status = getEffectiveStatus(lk, !!d, content);
   const courseTitle = content[getCourseKeys(courseId).titleKey] ?? "Course";
   const courseSlug = getCourseSlug(courseId, content);
+
+  // Follow slug renames: old URLs die on rename, so when the lesson or course
+  // slug changes while this page is open, swap the address to the live URL.
+  const router = useRouter();
+  const pathname = usePathname();
+  const contentSlug = content[`${lk}_slug`] ?? slug;
+  useEffect(() => {
+    if (!pathname.startsWith("/courses/")) return;
+    const target = `/courses/${courseSlug}/${contentSlug}`;
+    if (pathname === target) return;
+    // small delay so the slug/map upserts land before the server resolves it
+    const t = setTimeout(() => router.replace(target), 1200);
+    return () => clearTimeout(t);
+  }, [pathname, courseSlug, contentSlug, router]);
 
   // Prev / Next from live structure
   const currentIdx = allLessons.findIndex((l) => l.slug === slug);

@@ -497,6 +497,10 @@ function UserRowItem({
             }}
           >
             <option value="">No role</option>
+            {/* Role the user still holds but which was deleted from the table */}
+            {user.role && !roles.includes(user.role) && (
+              <option value={user.role}>{user.role} (removed)</option>
+            )}
             {roles.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
           <ChevronDown size={8} className="absolute right-1.5 pointer-events-none" style={{ color: "var(--text-muted)" }} />

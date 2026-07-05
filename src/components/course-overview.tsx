@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
 import { Plus, X, ChevronDown, ChevronUp, Check } from "lucide-react";
 import { useProgress } from "@/components/progress-provider";
 import { Editable } from "@/components/editable-text";
@@ -314,6 +315,19 @@ export function CourseOverview({ courseId }: { courseId: string }) {
   const { titleKey, descKey } = getCourseKeys(courseId);
   const courseSlug = getCourseSlug(courseId, content);
   const courseStatus = getCourseStatus(courseId, content);
+
+  // Follow course slug renames: old URLs die on rename, so when the slug
+  // changes while this page is open, swap the address to the live URL.
+  const router = useRouter();
+  const pathname = usePathname();
+  useEffect(() => {
+    const parts = pathname.split("/").filter(Boolean);
+    if (parts.length !== 2 || parts[0] !== "courses") return;
+    if (parts[1] === courseSlug) return;
+    // small delay so the slug/map upserts land before the server resolves it
+    const t = setTimeout(() => router.replace(`/courses/${courseSlug}`), 1200);
+    return () => clearTimeout(t);
+  }, [pathname, courseSlug, router]);
 
   const [addingSection, setAddingSection] = useState(false);
   const [newSectionName, setNewSectionName] = useState("");
