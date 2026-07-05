@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ChevronLeft, ChevronRight, ChevronUp, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check } from "lucide-react";
@@ -629,39 +629,165 @@ function LessonSlugRow({
   );
 }
 
-// ── Author credits (admin-editable only) ──────────────────────────────────────
+// ── Author credits (admin-editable, staff picker) ─────────────────────────────
+
+interface StaffUser {
+  username: string;
+  is_admin: boolean;
+  role: string | null;
+}
+
+// Searchable picker over the staff pool (admins + role-holders, e.g. Professors)
+function StaffPicker({
+  label, exclude, onSelect,
+}: {
+  label: string;
+  exclude: string[];
+  onSelect: (username: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [pool, setPool] = useState<StaffUser[] | null>(null);
+
+  useEffect(() => {
+    if (!open || pool !== null) return;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("profiles")
+          .select("username, is_admin, role")
+          .or("is_admin.eq.true,role.not.is.null")
+          .order("username");
+        setPool((data ?? []) as StaffUser[]);
+      } catch {
+        setPool([]);
+      }
+    })();
+  }, [open, pool]);
+
+  const needle = q.trim().toLowerCase();
+  const matches = (pool ?? [])
+    .filter((u) => !exclude.includes(u.username))
+    .filter((u) => u.username.toLowerCase().includes(needle))
+    .slice(0, 8);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="cursor-pointer px-2 py-0.5 rounded-[var(--radius-tag)] font-mono text-[10px] uppercase tracking-widest opacity-60 hover:opacity-100 transition-opacity"
+        style={{ border: "1px dashed var(--border-strong)", color: "var(--text-muted)" }}
+      >
+        {label}
+      </button>
+    );
+  }
+
+  return (
+    <span className="relative inline-flex">
+      <input
+        autoFocus
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { setOpen(false); setQ(""); }
+          if (e.key === "Enter" && matches[0]) { onSelect(matches[0].username); setOpen(false); setQ(""); }
+        }}
+        onBlur={() => setTimeout(() => { setOpen(false); setQ(""); }, 150)}
+        placeholder="Search staff…"
+        className="px-2 py-0.5 bg-transparent outline-none border-b w-36 text-[12px]"
+        style={{ borderColor: "var(--accent-medium)", color: "var(--text)" }}
+      />
+      <div
+        className="absolute left-0 top-full mt-1 z-30 flex flex-col overflow-hidden min-w-[180px]"
+        style={{ background: "var(--surface)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)", boxShadow: "0 8px 24px rgba(0,0,0,0.25)" }}
+      >
+        {pool === null ? (
+          <span className="px-3 py-2 text-[11px]" style={{ color: "var(--text-muted)", opacity: 0.6 }}>Loading…</span>
+        ) : matches.length > 0 ? (
+          matches.map((u) => (
+            <button
+              key={u.username}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onSelect(u.username); setOpen(false); setQ(""); }}
+              className="flex items-center justify-between gap-3 px-3 py-2 text-left text-[12px] cursor-pointer hover:bg-[var(--surface-raised)] transition-colors"
+              style={{ color: "var(--text)" }}
+            >
+              @{u.username}
+              <span className="font-mono text-[9px] uppercase tracking-widest" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
+                {u.is_admin ? "Admin" : u.role}
+              </span>
+            </button>
+          ))
+        ) : (
+          <span className="px-3 py-2 text-[11px]" style={{ color: "var(--text-muted)", opacity: 0.6 }}>No staff found.</span>
+        )}
+      </div>
+    </span>
+  );
+}
 
 function AuthorCredits({ lk }: { lk: string }) {
-  const { content } = useContentContext();
+  const { content, updateContent } = useContentContext();
   const { isAdmin } = usePermissions();
-  const author = content[`${lk}_author`] ?? "";
-  const editors = content[`${lk}_editors`] ?? "";
+  const author = (content[`${lk}_author`] ?? "").trim();
+  const editors = (content[`${lk}_editors`] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
   // Learners only see the block when credits are set
-  if (!isAdmin && !author && !editors) return null;
+  if (!isAdmin && !author && editors.length === 0) return null;
+
+  const saveEditors = (list: string[]) => updateContent(`${lk}_editors`, list.join(", "));
 
   return (
     <div
-      className="mb-10 pt-5 flex flex-col gap-1.5 font-mono text-[12px]"
+      className="mb-10 pt-5 flex flex-col gap-2 font-mono text-[12px]"
       style={{ borderTop: "1px solid var(--border-color)", color: "var(--text-muted)" }}
     >
       {(isAdmin || author) && (
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="uppercase tracking-widest text-[10px] opacity-50 shrink-0">Written by</span>
-          {isAdmin ? (
-            <Editable as="span" contentKey={`${lk}_author`} fallback="Add author…" />
-          ) : (
-            <span>{author}</span>
+          {author && <span style={{ color: "var(--text)" }}>@{author}</span>}
+          {isAdmin && author && (
+            <button
+              onClick={() => updateContent(`${lk}_author`, "")}
+              title="Remove author"
+              className="cursor-pointer opacity-40 hover:opacity-100 transition-opacity"
+            >
+              <X size={10} />
+            </button>
+          )}
+          {isAdmin && !author && (
+            <StaffPicker label="Set author…" exclude={[]} onSelect={(u) => updateContent(`${lk}_author`, u)} />
           )}
         </div>
       )}
-      {(isAdmin || editors) && (
-        <div className="flex items-baseline gap-2">
+      {/* Edited by: hidden from the public entirely when there are no editors */}
+      {(isAdmin || editors.length > 0) && (
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="uppercase tracking-widest text-[10px] opacity-50 shrink-0">Edited by</span>
           {isAdmin ? (
-            <Editable as="span" contentKey={`${lk}_editors`} fallback="Add editors…" />
+            <>
+              {editors.map((e) => (
+                <span key={e} className="flex items-center gap-1" style={{ color: "var(--text)" }}>
+                  @{e}
+                  <button
+                    onClick={() => saveEditors(editors.filter((x) => x !== e))}
+                    title="Remove editor"
+                    className="cursor-pointer opacity-40 hover:opacity-100 transition-opacity"
+                  >
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+              <StaffPicker
+                label={editors.length ? "+ Add" : "Add editor…"}
+                exclude={editors}
+                onSelect={(u) => saveEditors([...editors, u])}
+              />
+            </>
           ) : (
-            <span>{editors}</span>
+            <span style={{ color: "var(--text)" }}>{editors.map((e) => `@${e}`).join(", ")}</span>
           )}
         </div>
       )}
