@@ -115,7 +115,7 @@ function LessonRow({
   const { content } = useContentContext();
   const { profile } = useAuth();
   const { can } = usePermissions();
-  const canManage = can("manage_sections");
+  const canCurriculum = can("manage_curriculum");
   const canPublish = can("manage_lessons");
   // Granted to edit THIS lesson (directly or via its course) — lets them reach
   // it even while it's draft/soon.
@@ -156,7 +156,7 @@ function LessonRow({
         <Check size={14} strokeWidth={2} className="shrink-0" style={{ color: "var(--accent-medium)" }} aria-label="Completed" />
       )}
       <StatusControl lessonKey={lesson.lessonKey} hasStaticContent={lesson.hasStaticContent} />
-      {canManage && (
+      {canCurriculum && (
         <span className="flex items-center gap-0.5 shrink-0 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMove(-1); }}
@@ -318,7 +318,7 @@ export function CourseOverview({ courseId }: { courseId: string }) {
   // granted them this course.
   const { can, isAdmin } = usePermissions({ type: "course", courseId });
   const canEdit = can("edit_content");
-  const canManage = can("manage_sections");
+  const canCurriculum = can("manage_curriculum");
   const canPublish = can("manage_lessons");
   const canEditUrls = can("edit_urls");
   const { sections, allLessons } = useCourseStructure(courseId);
@@ -495,7 +495,7 @@ export function CourseOverview({ courseId }: { courseId: string }) {
                 className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] whitespace-nowrap"
               />
               <div className="h-px flex-1 bg-[var(--border-color)]" />
-              {canManage && (
+              {canCurriculum && (
                 <span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/section:opacity-60 hover:!opacity-100 transition-opacity">
                   <button
                     onClick={() => moveSection(section.sectionId, -1)}
@@ -533,21 +533,21 @@ export function CourseOverview({ courseId }: { courseId: string }) {
                   lesson={lesson}
                   courseId={courseId}
                   courseSlug={courseSlug}
-                  isLast={i === section.lessons.length - 1 && !canManage}
+                  isLast={i === section.lessons.length - 1 && !canCurriculum}
                   onRemove={() => removeLesson(lesson)}
                   onMove={(dir) => moveLesson(section, lesson.lessonKey.slice(courseId.length + 1), dir)}
                   canMoveUp={i > 0}
                   canMoveDown={i < section.lessons.length - 1}
                 />
               ))}
-              {canManage && <AddLessonBtn courseId={courseId} section={section} />}
+              {canCurriculum && <AddLessonBtn courseId={courseId} section={section} />}
             </div>
           </div>
         ))}
       </div>
 
       {/* Add Section */}
-      {canManage && (
+      {canCurriculum && (
         <div className="mt-8">
           {addingSection ? (
             <div className="flex items-center gap-2">

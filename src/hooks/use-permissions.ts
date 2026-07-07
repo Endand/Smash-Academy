@@ -7,12 +7,13 @@ import { useContentContext } from "@/components/content-provider";
 // Permission keys defined on the /admin Roles & Permissions panel.
 export type Permission =
   | "edit_content"
-  | "manage_sections"
   | "edit_icons"
+  | "manage_sections"
+  | "manage_curriculum"
   | "manage_lessons"
-  | "manage_courses"
   | "edit_urls"
   | "edit_authors"
+  | "manage_courses"
   | "manage_roles";
 
 // site_content key holding the permission map for a role

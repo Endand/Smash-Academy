@@ -11,46 +11,53 @@ import { createClient } from "@/lib/supabase/client";
 
 // ── Permission definitions ────────────────────────────────────────────────────
 
+// Each permission is granted to a role and applies only inside lessons/courses
+// the user has been given "Edit access" to (except the two admin-only ones).
 const PERMISSIONS = [
   {
     key: "edit_content",
     label: "Edit Text Content",
-    desc: "Click-to-edit text on lessons and courses the user is granted. Only admins can edit site-wide chrome (nav, homepage, footer)",
-  },
-  {
-    key: "manage_sections",
-    label: "Manage Lesson Sections",
-    desc: "Add and remove sections, learning outcomes, assignment tasks, knowledge check questions, and resources on lesson pages",
+    desc: "Click-to-edit any text — titles, headings, paragraphs, code / quote / callout blocks, outcomes, tasks — on granted lessons and courses.",
   },
   {
     key: "edit_icons",
     label: "Edit Lesson Icons",
-    desc: "Change the icon shown for each lesson in the course sidebar and overview (also controls the Project badge)",
+    desc: "Change a lesson's icon in the sidebar and course list. A wrench-type icon also turns the lesson into a Project.",
+  },
+  {
+    key: "manage_sections",
+    label: "Manage Lesson Content",
+    desc: "Inside a lesson: add, remove, and reorder sections, content blocks, learning outcomes, assignment steps, knowledge-check questions, and resources.",
+  },
+  {
+    key: "manage_curriculum",
+    label: "Add & Remove Lessons",
+    desc: "On a granted course: create, remove, and reorder lessons and projects, and the course's sections. (Course-level structure.)",
   },
   {
     key: "manage_lessons",
-    label: "Manage Lesson Availability",
-    desc: 'Publish and unpublish lessons and courses — controls whether they link out or show "Soon", plus lesson difficulty levels',
-  },
-  {
-    key: "manage_courses",
-    label: "Add & Remove Courses",
-    desc: "Create new courses and remove existing ones from the curriculum page, and view removed courses",
+    label: "Publish & Set Status",
+    desc: 'Set a lesson or course to Published / Soon / Draft, and set a course\'s difficulty level. Controls what learners can see.',
   },
   {
     key: "edit_urls",
     label: "Edit Page URLs",
-    desc: "Manually override the URL slug of a course or lesson (titles still auto-sync the URL either way)",
+    desc: "Manually override a course or lesson URL slug. Titles still auto-sync the URL either way.",
   },
   {
     key: "edit_authors",
     label: "Edit Author Credits",
-    desc: 'Set the "Written by" and "Edited by" staff credits shown at the bottom of each lesson',
+    desc: 'Set the "Written by" and "Edited by" staff credits at the bottom of a lesson.',
+  },
+  {
+    key: "manage_courses",
+    label: "Add & Remove Courses · admins only",
+    desc: "Create and delete whole courses on the curriculum page. Site-wide, so it stays with admins even if toggled on for a role.",
   },
   {
     key: "manage_roles",
-    label: "Manage Roles & Permissions",
-    desc: "Access this panel and configure what each role is allowed to do across the site",
+    label: "Manage Roles & Permissions · admins only",
+    desc: "Open this panel and configure roles. Site-wide, so it stays with admins even if toggled on for a role.",
   },
 ] as const;
 
@@ -96,6 +103,22 @@ export default function AdminPage() {
       updateContent(rolePermKey("Editor"), JSON.stringify({ edit_content: true }));
     }
     updateContent("__roles_seeded__", "1");
+  }, [loading, isAdmin, content, updateContent]);
+
+  // One-time migration: "Manage Lesson Content" used to also cover course-level
+  // lesson add/remove. That's now a separate "Add & Remove Lessons" right, so
+  // grant it to any role that already had the old bundled permission.
+  useEffect(() => {
+    if (loading || !isAdmin) return;
+    if (content["__perms_v2__"] === "1") return;
+    const current: string[] = parseJSON(content[ROLES_KEY], []);
+    for (const role of current) {
+      const perms = parseJSON<Record<string, boolean>>(content[rolePermKey(role)], {});
+      if (perms.manage_sections && perms.manage_curriculum === undefined) {
+        updateContent(rolePermKey(role), JSON.stringify({ ...perms, manage_curriculum: true }));
+      }
+    }
+    updateContent("__perms_v2__", "1");
   }, [loading, isAdmin, content, updateContent]);
 
   if (loading || !canAccess) return null;
