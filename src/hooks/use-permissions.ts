@@ -1,5 +1,6 @@
 "use client";
 
+import { createContext, createElement, useContext } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { useContentContext } from "@/components/content-provider";
 
@@ -19,24 +20,74 @@ export function rolePermKey(role: string) {
   return `__perm_${role.toLowerCase().replace(/\s+/g, "_")}__`;
 }
 
-// Admins hold every permission; role-holders get whatever their role's
-// permission map (edited on /admin) grants them.
-export function usePermissions() {
+// ── Edit scope ────────────────────────────────────────────────────────────────
+// A role-holder's permissions are scoped: they only apply inside a lesson or
+// course an admin has granted them. Everything not wrapped in a scope provider
+// (nav, homepage, footer, curriculum listing) is "site" scope — admin-only.
+
+export type EditScope =
+  | { type: "site" }
+  | { type: "course"; courseId: string }
+  | { type: "lesson"; courseId: string; lessonKey: string };
+
+const EditScopeContext = createContext<EditScope>({ type: "site" });
+
+export function EditScopeProvider({ scope, children }: { scope: EditScope; children: React.ReactNode }) {
+  return createElement(EditScopeContext.Provider, { value: scope }, children);
+}
+
+export function useEditScope() {
+  return useContext(EditScopeContext);
+}
+
+// site_content keys holding the edit-access username lists
+export function lessonAclKey(lessonKey: string) { return `${lessonKey}_edit_acl`; }
+export function courseAclKey(courseId: string) { return `course_${courseId}_edit_acl`; }
+
+function aclUsers(content: Record<string, string>, key: string): string[] {
+  try { return JSON.parse(content[key] ?? "[]") as string[]; }
+  catch { return []; }
+}
+
+// Does `username` have an admin-granted right to edit this scope?
+export function hasScopeAccess(
+  username: string | undefined,
+  content: Record<string, string>,
+  scope: EditScope
+): boolean {
+  if (!username || scope.type === "site") return false;
+  if (scope.type === "course") {
+    return aclUsers(content, courseAclKey(scope.courseId)).includes(username);
+  }
+  // lesson: granted the lesson directly, or granted its whole course
+  return (
+    aclUsers(content, lessonAclKey(scope.lessonKey)).includes(username) ||
+    aclUsers(content, courseAclKey(scope.courseId)).includes(username)
+  );
+}
+
+// Admins can do everything, everywhere. A role-holder can do X here only if
+// their role grants X *and* they've been granted access to this scope.
+export function usePermissions(scopeOverride?: EditScope) {
   const { profile } = useAuth();
   const { content } = useContentContext();
+  const ctxScope = useEditScope();
+  const scope = scopeOverride ?? ctxScope;
   const isAdmin = !!profile?.is_admin;
 
   const can = (perm: Permission): boolean => {
     if (isAdmin) return true;
     const role = profile?.role;
     if (!role) return false;
-    try {
-      const perms = JSON.parse(content[rolePermKey(role)] ?? "{}") as Record<string, boolean>;
-      return !!perms[perm];
-    } catch {
-      return false;
-    }
+
+    let rolePerms: Record<string, boolean>;
+    try { rolePerms = JSON.parse(content[rolePermKey(role)] ?? "{}"); }
+    catch { return false; }
+    if (!rolePerms[perm]) return false;
+
+    // Role grants the capability — but only within a granted lesson/course.
+    return hasScopeAccess(profile?.username, content, scope);
   };
 
-  return { can, isAdmin };
+  return { can, isAdmin, scope };
 }

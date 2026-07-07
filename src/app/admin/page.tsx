@@ -15,7 +15,7 @@ const PERMISSIONS = [
   {
     key: "edit_content",
     label: "Edit Text Content",
-    desc: "Click-to-edit any text field on lessons, course pages, and site-wide content (headers, footers, descriptions)",
+    desc: "Click-to-edit text on lessons and courses the user is granted. Only admins can edit site-wide chrome (nav, homepage, footer)",
   },
   {
     key: "manage_sections",
@@ -82,6 +82,21 @@ export default function AdminPage() {
     if (!loading && !canAccess) router.push("/");
   }, [loading, canAccess, router]);
 
+  // One-time seed: create the "Editor" role (edit-only). Runs once ever, so an
+  // admin who later deletes it won't have it re-created.
+  useEffect(() => {
+    if (loading || !isAdmin) return;
+    if (content["__roles_seeded__"] === "1") return;
+    const current: string[] = parseJSON(content[ROLES_KEY], []);
+    if (!current.includes("Editor")) {
+      updateContent(ROLES_KEY, JSON.stringify([...current, "Editor"]));
+    }
+    if (!content[rolePermKey("Editor")]) {
+      updateContent(rolePermKey("Editor"), JSON.stringify({ edit_content: true }));
+    }
+    updateContent("__roles_seeded__", "1");
+  }, [loading, isAdmin, content, updateContent]);
+
   if (loading || !canAccess) return null;
 
   // ── Data from site_content ────────────────────────────────────────────────
@@ -124,8 +139,9 @@ export default function AdminPage() {
               Roles & Permissions
             </h1>
             <p className="text-sm leading-relaxed max-w-xl" style={{ color: "var(--text-muted)" }}>
-              Define what each role can do across the site. Roles are assigned to users separately.
-              Changes take effect immediately for all sessions.
+              A role defines <em>what</em> a user can do; an admin grants <em>which</em> lessons or courses
+              they can do it to, from each lesson&rsquo;s or course&rsquo;s &ldquo;Edit access&rdquo; box.
+              Admins can edit everything, everywhere. Changes take effect immediately.
             </p>
           </div>
 

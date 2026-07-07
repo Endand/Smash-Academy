@@ -8,7 +8,8 @@ import { useProgress } from "@/components/progress-provider";
 import { Editable } from "@/components/editable-text";
 import { EditableIcon } from "@/components/editable-icon";
 import { useContentContext } from "@/components/content-provider";
-import { usePermissions } from "@/hooks/use-permissions";
+import { EditAccessManager } from "@/components/lesson-content";
+import { usePermissions, EditScopeProvider, courseAclKey } from "@/hooks/use-permissions";
 import {
   useCourseStructure,
   getEffectiveStatus,
@@ -306,7 +307,10 @@ function SlugRow({ courseId, courseSlug }: { courseId: string; courseSlug: strin
 
 export function CourseOverview({ courseId }: { courseId: string }) {
   const { content, updateContent } = useContentContext();
-  const { can } = usePermissions();
+  // Permissions scoped to THIS course — a role-holder can act only if an admin
+  // granted them this course.
+  const { can, isAdmin } = usePermissions({ type: "course", courseId });
+  const canEdit = can("edit_content");
   const canManage = can("manage_sections");
   const canPublish = can("manage_lessons");
   const canEditUrls = can("edit_urls");
@@ -379,9 +383,9 @@ export function CourseOverview({ courseId }: { courseId: string }) {
   const removeSection = (section: LiveSection) => updateContent(`${section.sectionKey}_deleted`, "1");
   const removeLesson  = (lesson: LiveLesson)  => updateContent(`${lesson.lessonKey}_deleted`, "1");
 
-  // Non-editors see "Coming Soon" for unavailable or removed courses
+  // Non-editors see "Coming Soon"; granted editors/professors bypass it
   const isDeleted = content[`course_${courseId}_deleted`] === "1";
-  if ((courseStatus !== "available" || isDeleted) && !canPublish) {
+  if ((courseStatus !== "available" || isDeleted) && !canPublish && !canEdit) {
     return (
       <div className="max-w-2xl mx-auto px-6 py-20 text-center">
         <p className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] mb-4">Coming soon</p>
@@ -397,6 +401,7 @@ export function CourseOverview({ courseId }: { courseId: string }) {
   }
 
   return (
+    <EditScopeProvider scope={{ type: "course", courseId }}>
     <div className="max-w-3xl mx-auto px-6 py-16">
 
       {/* Course header */}
@@ -463,6 +468,13 @@ export function CourseOverview({ courseId }: { courseId: string }) {
           </div>
         )}
       </div>
+
+      {/* Edit access — admin grants the whole course (and all its lessons) */}
+      <EditAccessManager
+        aclKey={courseAclKey(courseId)}
+        title="Edit access — whole course"
+        hint="Professors listed here can edit this course and every lesson inside it. For a single lesson, grant access from that lesson's page instead."
+      />
 
       {/* Sections */}
       <div className="flex flex-col gap-10">
@@ -564,5 +576,6 @@ export function CourseOverview({ courseId }: { courseId: string }) {
         </div>
       )}
     </div>
+    </EditScopeProvider>
   );
 }

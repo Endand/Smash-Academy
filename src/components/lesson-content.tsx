@@ -4,11 +4,11 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronLeft, ChevronRight, ChevronUp, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check, Copy } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check, Copy, Lock } from "lucide-react";
 import { useProgress } from "@/components/progress-provider";
 import { Editable } from "@/components/editable-text";
 import { useContentContext } from "@/components/content-provider";
-import { usePermissions } from "@/hooks/use-permissions";
+import { usePermissions, EditScopeProvider, lessonAclKey } from "@/hooks/use-permissions";
 import { useCourseStructure, getEffectiveStatus, parseJSON } from "@/hooks/use-course-structure";
 import { getStaticLesson } from "@/lib/courses/foundations-data";
 import { getCourseKeys, getCourseSlug, slugFromTitle, PROJECT_ICONS } from "@/lib/courses/course-utils";
@@ -667,13 +667,15 @@ interface StaffUser {
   role: string | null;
 }
 
-// Searchable picker over the staff pool (admins + role-holders, e.g. Professors)
+// Searchable picker over the staff pool. Default pool is admins + role-holders
+// (for author credits); rolesOnly restricts to role-holders (for edit grants).
 function StaffPicker({
-  label, exclude, onSelect,
+  label, exclude, onSelect, rolesOnly = false,
 }: {
   label: string;
   exclude: string[];
   onSelect: (username: string) => void;
+  rolesOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -684,17 +686,15 @@ function StaffPicker({
     (async () => {
       try {
         const supabase = createClient();
-        const { data } = await supabase
-          .from("profiles")
-          .select("username, is_admin, role")
-          .or("is_admin.eq.true,role.not.is.null")
-          .order("username");
+        let query = supabase.from("profiles").select("username, is_admin, role");
+        query = rolesOnly ? query.not("role", "is", null) : query.or("is_admin.eq.true,role.not.is.null");
+        const { data } = await query.order("username");
         setPool((data ?? []) as StaffUser[]);
       } catch {
         setPool([]);
       }
     })();
-  }, [open, pool]);
+  }, [open, pool, rolesOnly]);
 
   const needle = q.trim().toLowerCase();
   const matches = (pool ?? [])
@@ -837,6 +837,58 @@ function AuthorCredits({ lk, lastUpdated }: { lk: string; lastUpdated: string | 
   );
 }
 
+// ── Edit-access grants (admin only) ───────────────────────────────────────────
+
+export function EditAccessManager({
+  aclKey, title, hint,
+}: {
+  aclKey: string;
+  title: string;
+  hint: string;
+}) {
+  const { content, updateContent } = useContentContext();
+  const { isAdmin } = usePermissions();
+  if (!isAdmin) return null;
+
+  let users: string[] = [];
+  try { users = JSON.parse(content[aclKey] ?? "[]"); } catch { users = []; }
+
+  const save = (list: string[]) => updateContent(aclKey, JSON.stringify(list));
+
+  return (
+    <div
+      className="mb-10 px-5 pt-4 pb-5 flex flex-col gap-2"
+      style={{ background: "var(--surface)", border: "1px dashed var(--border-strong)", borderRadius: "var(--radius-card)" }}
+    >
+      <div className="flex items-center gap-2">
+        <Lock size={12} style={{ color: "var(--text-muted)" }} />
+        <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>{title}</span>
+      </div>
+      <p className="text-[12px] leading-relaxed" style={{ color: "var(--text-muted)", opacity: 0.65 }}>{hint}</p>
+      <div className="flex items-center gap-2 flex-wrap mt-1 font-mono text-[12px]">
+        {users.map((u) => (
+          <span
+            key={u}
+            className="flex items-center gap-1.5 px-2 py-0.5 rounded-[var(--radius-tag)]"
+            style={{ border: "1px solid var(--accent-medium)", color: "var(--accent-medium)" }}
+          >
+            @{u}
+            <button onClick={() => save(users.filter((x) => x !== u))} title="Revoke access" className="cursor-pointer opacity-60 hover:opacity-100 transition-opacity">
+              <X size={10} />
+            </button>
+          </span>
+        ))}
+        <StaffPicker
+          label={users.length ? "+ Grant" : "Grant access…"}
+          exclude={users}
+          rolesOnly
+          onSelect={(u) => save([...users, u])}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Mark-complete button ──────────────────────────────────────────────────────
 
 function MarkCompleteButton({ lessonKey }: { lessonKey: string }) {
@@ -921,7 +973,9 @@ interface Props {
 
 export function LessonContent({ lessonKey, slug, courseId = "foundations", lastUpdated = null }: Props) {
   const { content, updateContent } = useContentContext();
-  const { can } = usePermissions();
+  // Permissions here are scoped to THIS lesson — a role-holder can act only if
+  // an admin granted them this lesson (or its whole course).
+  const { can, isAdmin } = usePermissions({ type: "lesson", courseId, lessonKey });
   const canEdit = can("edit_content");
   const canManage = can("manage_sections");
   const canPublish = can("manage_lessons");
@@ -1102,9 +1156,9 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
     updateContent(`${lk}_res_order`, JSON.stringify(next));
   };
 
-  // ── "Coming Soon" gate for non-editors (also covers removed courses) ─────
+  // ── "Coming Soon" gate — granted editors/professors bypass it ────────────
   const courseDeleted = content[`course_${courseId}_deleted`] === "1";
-  if ((status !== "published" || courseDeleted) && !canPublish) {
+  if ((status !== "published" || courseDeleted) && !canPublish && !canEdit) {
     return (
       <div className="max-w-2xl mx-auto px-6 md:px-10 py-20 text-center">
         <p className="font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] mb-4">
@@ -1124,6 +1178,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
   }
 
   return (
+    <EditScopeProvider scope={{ type: "lesson", courseId, lessonKey }}>
     <div className="max-w-2xl mx-auto px-6 md:px-10 py-10 md:py-14">
 
       {/* Breadcrumb */}
@@ -1483,6 +1538,13 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
       </div>
       )}
 
+      {/* Edit access — admin grants this lesson to a professor/editor */}
+      <EditAccessManager
+        aclKey={lessonAclKey(lk)}
+        title="Edit access — this lesson"
+        hint="Professors and editors listed here can edit this lesson. Grant a whole course instead from the course page."
+      />
+
       {/* Author credits */}
       <AuthorCredits lk={lk} lastUpdated={lastUpdated} />
 
@@ -1511,5 +1573,6 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
         ) : <div />}
       </div>
     </div>
+    </EditScopeProvider>
   );
 }

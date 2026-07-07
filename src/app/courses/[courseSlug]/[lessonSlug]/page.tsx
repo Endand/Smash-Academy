@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getStaticLessonKey, getStaticLesson } from "@/lib/courses/foundations-data";
 import { LessonSidebar } from "@/components/lesson-sidebar";
 import { LessonContent } from "@/components/lesson-content";
+import { EditScopeProvider } from "@/hooks/use-permissions";
 import { Nav } from "@/components/nav";
 import { Footer } from "@/components/footer";
 
@@ -132,12 +133,14 @@ export default async function LessonPage({ params }: Props) {
   return (
     <>
       <Nav />
+      <EditScopeProvider scope={{ type: "course", courseId }}>
       <div className="pt-14 min-h-screen flex flex-col md:flex-row">
         <LessonSidebar currentSlug={lessonSlug} courseId={courseId} />
         <main className="flex-1 min-w-0">
           <LessonContent lessonKey={lessonKey} slug={lessonSlug} courseId={courseId} lastUpdated={lastUpdated} />
         </main>
       </div>
+      </EditScopeProvider>
       <Footer />
     </>
   );
