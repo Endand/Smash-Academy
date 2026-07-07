@@ -7,7 +7,8 @@ import { Footer } from "@/components/footer";
 import { ArrowRight, Plus, X, AlertTriangle } from "lucide-react";
 import { Editable } from "@/components/editable-text";
 import { useContentContext } from "@/components/content-provider";
-import { usePermissions } from "@/hooks/use-permissions";
+import { useAuth } from "@/components/auth-provider";
+import { usePermissions, evalPermission } from "@/hooks/use-permissions";
 import {
   getCourseKeys,
   getCourseSlug,
@@ -87,9 +88,14 @@ function CourseCard({
   onRemove: () => void;
 }) {
   const { content } = useContentContext();
+  const { profile } = useAuth();
   const { can } = usePermissions();
   const canPublish = can("manage_lessons");
   const canManageCourses = can("manage_courses");
+  // Granted to edit THIS course (site-scoped page can't see it via can()) —
+  // lets a professor open their course even while it's still "Soon".
+  const canEditThis = evalPermission(profile, content, { type: "course", courseId }, "edit_content");
+  const canOpenUnpublished = canPublish || canEditThis;
 
   const { titleKey, levelKey, descKey } = getCourseKeys(courseId);
   const courseSlug = getCourseSlug(courseId, content);
@@ -129,7 +135,7 @@ function CourseCard({
               Removed
             </span>
           )}
-          {!isAvailable && !isDeleted && canPublish && (
+          {!isAvailable && !isDeleted && canOpenUnpublished && (
             <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-tag)] shrink-0" style={{ color: "var(--text-muted)", border: "1px solid var(--border-strong)" }}>
               Soon
             </span>
@@ -155,10 +161,7 @@ function CourseCard({
     </div>
   );
 
-  if (isAvailable && !isDeleted) {
-    return <Link href={href} className="block group">{cardInner}</Link>;
-  }
-  if (canPublish && !isDeleted) {
+  if ((isAvailable || canOpenUnpublished) && !isDeleted) {
     return <Link href={href} className="block group">{cardInner}</Link>;
   }
   return <div className="group">{cardInner}</div>;

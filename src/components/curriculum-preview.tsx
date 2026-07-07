@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useTheme } from "@/components/theme-provider";
 import { Editable } from "@/components/editable-text";
 import { useContentContext } from "@/components/content-provider";
+import { useAuth } from "@/components/auth-provider";
+import { evalPermission } from "@/hooks/use-permissions";
 import { useProgress } from "@/components/progress-provider";
 import { buildCourseStructure, getEffectiveStatus } from "@/lib/courses/course-structure";
 import {
@@ -39,6 +41,7 @@ function parseJSON<T>(str: string | undefined, fallback: T): T {
 export function CurriculumPreview() {
   const { content } = useContentContext();
   const { theme } = useTheme();
+  const { profile } = useAuth();
   const { completed, signedIn } = useProgress();
   const filled = theme === "light";
 
@@ -66,6 +69,8 @@ export function CurriculumPreview() {
             const status = getCourseStatus(courseId, content);
             const slug = getCourseSlug(courseId, content);
             const isAvailable = status === "available";
+            // Granted editors/professors can open their course even while "Soon"
+            const canOpen = isAvailable || evalPermission(profile, content, { type: "course", courseId }, "edit_content");
 
             // Learner progress at a glance (signed-in, started courses only)
             const published = signedIn && isAvailable
@@ -122,7 +127,7 @@ export function CurriculumPreview() {
               </div>
             );
 
-            return isAvailable ? (
+            return canOpen ? (
               <Link key={courseId} href={`/courses/${slug}`} className="block group">
                 {card}
               </Link>
