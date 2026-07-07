@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Check, ChevronDown, Search } from "lucide-react";
+import { Plus, X, Check, ChevronDown, Search, AlertTriangle } from "lucide-react";
 import { Nav } from "@/components/nav";
 import { useAuth } from "@/components/auth-provider";
 import { useContentContext } from "@/components/content-provider";
@@ -75,6 +75,7 @@ export default function AdminPage() {
   const { can, isAdmin } = usePermissions();
   const [addingRole, setAddingRole] = useState(false);
   const [newRoleName, setNewRoleName] = useState("");
+  const [pendingRemoveRole, setPendingRemoveRole] = useState<string | null>(null);
 
   const canAccess = can("manage_roles");
 
@@ -119,9 +120,23 @@ export default function AdminPage() {
     setAddingRole(false);
   };
 
-  const removeRole = (role: string) => {
+  const removeRole = async (role: string) => {
+    // Unassign the role from everyone who holds it (each set to "No role"),
+    // then drop the role definition and its permission map.
+    try {
+      const supabase = createClient();
+      const { data: holders } = await supabase.from("profiles").select("id").eq("role", role);
+      await Promise.all(
+        (holders ?? []).map((h: { id: string }) =>
+          supabase.rpc("set_user_role", { target_id: h.id, new_role: "" })
+        )
+      );
+    } catch (err) {
+      console.error("[admin] role cleanup failed:", err);
+    }
     updateContent(ROLES_KEY, JSON.stringify(roles.filter(r => r !== role)));
     updateContent(rolePermKey(role), "{}");
+    setPendingRemoveRole(null);
   };
 
   return (
@@ -175,12 +190,12 @@ export default function AdminPage() {
                       <div className="flex items-center justify-center gap-2">
                         <span>{role}</span>
                         <button
-                          onClick={() => removeRole(role)}
+                          onClick={() => setPendingRemoveRole(role)}
                           title={`Remove ${role} role`}
-                          className="opacity-30 hover:opacity-100 transition-opacity cursor-pointer"
+                          className="opacity-40 hover:opacity-100 transition-opacity cursor-pointer"
                           style={{ color: "var(--text-muted)" }}
                         >
-                          <X size={10} />
+                          <X size={11} />
                         </button>
                       </div>
                     </th>
@@ -320,7 +335,92 @@ export default function AdminPage() {
           {isAdmin && <UsersSection roles={roles} />}
         </div>
       </main>
+
+      {pendingRemoveRole && (
+        <RemoveRoleDialog
+          role={pendingRemoveRole}
+          onCancel={() => setPendingRemoveRole(null)}
+          onConfirm={() => removeRole(pendingRemoveRole)}
+        />
+      )}
     </>
+  );
+}
+
+// ── Remove-role confirmation dialog ───────────────────────────────────────────
+
+function RemoveRoleDialog({
+  role, onCancel, onConfirm,
+}: {
+  role: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const [holders, setHolders] = useState<number | null>(null);
+  const [working, setWorking] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { count } = await supabase
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("role", role);
+        setHolders(count ?? 0);
+      } catch {
+        setHolders(0);
+      }
+    })();
+  }, [role]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      style={{ background: "rgba(0,0,0,0.45)" }}
+      onClick={onCancel}
+    >
+      <div
+        className="max-w-sm w-full p-6 flex flex-col gap-4"
+        style={{ background: "var(--bg)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-card)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: "var(--accent-medium)" }} />
+          <div>
+            <p className="text-sm text-[var(--text)] font-light leading-snug">
+              Remove the <strong className="font-medium">{role}</strong> role?
+            </p>
+            <p className="text-[12px] mt-1.5 leading-relaxed" style={{ color: "var(--text-muted)" }}>
+              {holders === null
+                ? "Checking who holds this role…"
+                : holders === 0
+                ? "No users currently hold this role."
+                : `${holders} user${holders === 1 ? "" : "s"} currently hold this role and will be set to No role.`}{" "}
+              Their per-lesson and per-course edit grants stay, but stop working until they&apos;re given another role.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            disabled={working}
+            className="px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest cursor-pointer rounded-[var(--radius-button)]"
+            style={{ border: "1px solid var(--border-strong)", color: "var(--text-muted)" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={async () => { setWorking(true); await onConfirm(); }}
+            disabled={working || holders === null}
+            className="px-4 py-1.5 font-mono text-[11px] uppercase tracking-widest cursor-pointer rounded-[var(--radius-button)] disabled:opacity-50"
+            style={{ background: "var(--accent)", color: "#fff" }}
+          >
+            {working ? "Removing…" : "Remove"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
