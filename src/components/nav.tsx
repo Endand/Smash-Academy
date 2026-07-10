@@ -8,6 +8,7 @@ import { useAuth } from "@/components/auth-provider";
 import { usePermissions } from "@/hooks/use-permissions";
 import { SearchButton } from "@/components/search";
 import { MyAccessMenu } from "@/components/my-access-menu";
+import { ADMIN_COLOR } from "@/lib/role-color";
 import { createClient } from "@/lib/supabase/client";
 
 export function Nav() {
@@ -128,7 +129,7 @@ export function Nav() {
                 <Link
                   href="/admin"
                   className="hidden sm:inline font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-tag)] transition-colors"
-                  style={{ color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}
+                  style={{ color: ADMIN_COLOR, border: `1px solid ${ADMIN_COLOR}` }}
                 >
                   Admin
                 </Link>

@@ -8,6 +8,7 @@ import { useAuth } from "@/components/auth-provider";
 import { useContentContext } from "@/components/content-provider";
 import { usePermissions, rolePermKey } from "@/hooks/use-permissions";
 import { createClient } from "@/lib/supabase/client";
+import { roleColor, ADMIN_COLOR } from "@/lib/role-color";
 
 // ── Permission definitions ────────────────────────────────────────────────────
 
@@ -243,7 +244,8 @@ export default function AdminPage() {
                       className="px-5 py-3 text-center font-mono text-[10px] uppercase tracking-widest text-[var(--text-muted)] min-w-[130px]"
                     >
                       <div className="flex items-center justify-center gap-2">
-                        <span>{role}</span>
+                        <span className="shrink-0 rounded-full" style={{ width: 8, height: 8, background: roleColor(role) }} />
+                        <span style={{ color: roleColor(role) }}>{role}</span>
                         <button
                           onClick={() => setPendingRemoveRole(role)}
                           title={`Remove ${role} role`}
@@ -614,10 +616,12 @@ function RoleGroup({
   onAssign: (userId: string, role: string) => void;
   emptyNote: string;
 }) {
+  const color = label === "Admins" ? ADMIN_COLOR : roleColor(label);
   return (
     <div>
       <div className="flex items-center gap-4 mb-3">
-        <span className="font-mono text-[11px] uppercase tracking-widest whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+        <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+          <span className="shrink-0 rounded-full" style={{ width: 8, height: 8, background: color }} />
           {label} <span style={{ opacity: 0.5 }}>({users.length})</span>
         </span>
         <div className="h-px flex-1 bg-[var(--border-color)]" />
@@ -652,7 +656,7 @@ function UserRowItem({
       {user.is_admin ? (
         <span
           className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-[var(--radius-tag)]"
-          style={{ color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}
+          style={{ color: ADMIN_COLOR, border: `1px solid ${ADMIN_COLOR}` }}
         >
           Admin
         </span>
@@ -663,8 +667,8 @@ function UserRowItem({
             onChange={(e) => onAssign(user.id, e.target.value)}
             className="appearance-none font-mono text-[10px] uppercase tracking-widest px-2 py-1 pr-6 rounded-[var(--radius-tag)] cursor-pointer bg-transparent outline-none"
             style={{
-              color: user.role ? "var(--accent-medium)" : "var(--text-muted)",
-              border: `1px solid ${user.role ? "var(--accent-medium)" : "var(--border-strong)"}`,
+              color: user.role ? roleColor(user.role) : "var(--text-muted)",
+              border: `1px solid ${user.role ? roleColor(user.role) : "var(--border-strong)"}`,
             }}
           >
             <option value="">No role</option>

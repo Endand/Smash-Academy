@@ -8,6 +8,7 @@ import { useContentContext } from "@/components/content-provider";
 import { buildCourseStructure, getEffectiveStatus, parseJSON } from "@/lib/courses/course-structure";
 import { getCourseKeys, getCourseSlug, SEED_COURSE_IDS, PROJECT_ICONS } from "@/lib/courses/course-utils";
 import { courseAclKey, lessonAclKey } from "@/hooks/use-permissions";
+import { roleColor } from "@/lib/role-color";
 
 interface LessonRef {
   lessonKey: string;
@@ -89,6 +90,7 @@ export function MyAccessMenu() {
   if (!profile?.role || profile.is_admin) return null;
 
   const totalLessons = groups.reduce((n, g) => n + g.lessons.length, 0);
+  const color = roleColor(profile.role);
 
   return (
     <div ref={wrapRef} className="relative hidden sm:inline-flex">
@@ -96,7 +98,7 @@ export function MyAccessMenu() {
         onClick={() => setOpen((v) => !v)}
         title="Your edit access"
         className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded-[var(--radius-tag)] cursor-pointer transition-opacity hover:opacity-80"
-        style={{ color: "var(--accent-medium)", border: "1px solid var(--accent-medium)" }}
+        style={{ color, border: `1px solid ${color}` }}
       >
         {profile.role}
         <ChevronDown size={9} style={{ transform: open ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }} />
