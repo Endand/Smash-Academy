@@ -1129,6 +1129,25 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
   };
   const deleteKCItem = (idx: number) => updateContent(`${lk}_kc${idx}_deleted`, "1");
 
+  // Knowledge-check display order
+  const kcOrderStored = parseJSON<string[]>(content[`${lk}_kc_order`], []);
+  const kcIds = kcItems.map((k) => String(k.i));
+  const kcOrderIds = [
+    ...kcOrderStored.filter((id) => kcIds.includes(id)),
+    ...kcIds.filter((id) => !kcOrderStored.includes(id)),
+  ];
+  const orderedKCItems = kcOrderIds
+    .map((id) => kcItems.find((k) => String(k.i) === id))
+    .filter((k): k is KCEntry => !!k);
+  const moveKCItem = (kcIdx: number, dir: -1 | 1) => {
+    const idx = kcOrderIds.indexOf(String(kcIdx));
+    const j = idx + dir;
+    if (idx < 0 || j < 0 || j >= kcOrderIds.length) return;
+    const next = [...kcOrderIds];
+    [next[idx], next[j]] = [next[j], next[idx]];
+    updateContent(`${lk}_kc_order`, JSON.stringify(next));
+  };
+
   // ── Resources ─────────────────────────────────────────────────────────────
   const defaultResCount = d?.resources?.length ?? 0;
   const resCount = parseInt(content[`${lk}_res_count`] ?? "", 10) || defaultResCount;
@@ -1482,12 +1501,13 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
       {!isProject && (
       <div className="mb-14">
         <SectionLabel label="Knowledge Check" />
-        {kcItems.length > 0 ? (
+        {orderedKCItems.length > 0 ? (
           <div className="flex flex-col gap-2">
-            {kcItems.map(({ i, defQ, defA }, displayIdx) => (
+            {orderedKCItems.map(({ i, defQ, defA }, displayIdx) => (
               <div key={i} className="group relative">
                 {canManage && (
-                  <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                  <div className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center gap-0.5">
+                    <MoveBtns onMove={(dir) => moveKCItem(i, dir)} canUp={displayIdx > 0} canDown={displayIdx < orderedKCItems.length - 1} />
                     <RemoveBtn onClick={() => deleteKCItem(i)} title="Remove question" />
                   </div>
                 )}
