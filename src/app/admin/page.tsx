@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Check, ChevronDown, Search, AlertTriangle } from "lucide-react";
 import { Nav } from "@/components/nav";
@@ -491,43 +491,68 @@ interface UserRow {
 }
 
 function UsersSection({ roles }: { roles: string[] }) {
-  const [users, setUsers] = useState<UserRow[] | null>(null);
+  // Only admins + role-holders are loaded for the groups (a bounded set) — a
+  // plain select is capped at 1000 rows, so loading *all* users would drop
+  // role-holders once the site passes 1000 registered users.
+  const [staff, setStaff] = useState<UserRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [results, setResults] = useState<UserRow[]>([]);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id, username, is_admin, role")
-          .order("username");
-        if (error) throw error;
-        setUsers((data ?? []) as UserRow[]);
-      } catch {
-        setError("Couldn't load users — make sure features_schema.sql has been run.");
-      }
-    })();
+  const loadStaff = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, username, is_admin, role")
+        .or("is_admin.eq.true,role.not.is.null")
+        .order("username");
+      if (error) throw error;
+      setStaff((data ?? []) as UserRow[]);
+    } catch {
+      setError("Couldn't load users — make sure features_schema.sql has been run.");
+    }
   }, []);
 
+  useEffect(() => { loadStaff(); }, [loadStaff]);
+
+  // Search hits the DB so any user is findable regardless of total user count.
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) { setResults([]); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase
+          .from("profiles")
+          .select("id, username, is_admin, role")
+          .ilike("username", `%${q.replace(/[%_]/g, "")}%`)
+          .order("username")
+          .limit(20);
+        if (!cancelled) setResults((data ?? []) as UserRow[]);
+      } catch { if (!cancelled) setResults([]); }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [query]);
+
   const assignRole = async (userId: string, role: string) => {
-    const prev = users;
-    setUsers((u) => u?.map((row) => (row.id === userId ? { ...row, role: role || null } : row)) ?? null);
     try {
       const supabase = createClient();
       const { error } = await supabase.rpc("set_user_role", { target_id: userId, new_role: role });
       if (error) throw error;
+      // Update search results in place, and refresh the groups (the user may have
+      // just gained or lost a role).
+      setResults((rs) => rs.map((r) => (r.id === userId ? { ...r, role: role || null } : r)));
+      loadStaff();
     } catch (err) {
       console.error("[admin] role assignment failed:", err);
-      setUsers(prev ?? null);
     }
   };
 
-  const q = query.trim().toLowerCase();
-  const results = q ? (users ?? []).filter((u) => u.username.toLowerCase().includes(q)).slice(0, 20) : [];
-  const admins = (users ?? []).filter((u) => u.is_admin);
-  const usersInRole = (role: string) => (users ?? []).filter((u) => !u.is_admin && u.role === role);
+  const q = query.trim();
+  const admins = (staff ?? []).filter((u) => u.is_admin);
+  const usersInRole = (role: string) => (staff ?? []).filter((u) => !u.is_admin && u.role === role);
 
   return (
     <div className="mt-14">
@@ -540,7 +565,7 @@ function UsersSection({ roles }: { roles: string[] }) {
         <p className="text-[12px] font-mono" style={{ color: "var(--accent-medium)" }}>{error}</p>
       )}
 
-      {users && (
+      {staff && (
         <>
           {/* Search */}
           <div

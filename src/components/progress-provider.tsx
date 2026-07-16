@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { createClient, withTimeout } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
 
@@ -23,11 +23,16 @@ export function useProgress() {
 export function ProgressProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [completed, setCompleted] = useState<Set<string>>(new Set());
+  // Mirror of `completed` read synchronously in toggleComplete — reading a value
+  // set inside a setState updater is unreliable (React may run it after the DB
+  // call), which made un-completing a lesson fire an INSERT instead of a DELETE.
+  const completedRef = useRef<Set<string>>(new Set());
+  const setBoth = useCallback((next: Set<string>) => { completedRef.current = next; setCompleted(next); }, []);
   const userId = user?.id ?? null;
 
   useEffect(() => {
     if (!userId) {
-      setCompleted(new Set());
+      setBoth(new Set());
       return;
     }
     let cancelled = false;
@@ -38,26 +43,23 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
           supabase.from("lesson_progress").select("lesson_key").eq("user_id", userId)
         );
         if (!cancelled && !error && data) {
-          setCompleted(new Set(data.map((r: { lesson_key: string }) => r.lesson_key)));
+          setBoth(new Set(data.map((r: { lesson_key: string }) => r.lesson_key)));
         }
       } catch {
         // table may not exist yet — progress simply stays empty
       }
     })();
     return () => { cancelled = true; };
-  }, [userId]);
+  }, [userId, setBoth]);
 
   const toggleComplete = useCallback(async (lessonKey: string) => {
     if (!userId) return;
     const supabase = createClient();
-    let wasComplete = false;
-    setCompleted((prev) => {
-      wasComplete = prev.has(lessonKey);
-      const next = new Set(prev);
-      if (wasComplete) next.delete(lessonKey);
-      else next.add(lessonKey);
-      return next;
-    });
+    const wasComplete = completedRef.current.has(lessonKey);
+    const next = new Set(completedRef.current);
+    if (wasComplete) next.delete(lessonKey);
+    else next.add(lessonKey);
+    setBoth(next);
     try {
       if (wasComplete) {
         await withTimeout(
@@ -65,13 +67,16 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
         );
       } else {
         await withTimeout(
-          supabase.from("lesson_progress").insert({ user_id: userId, lesson_key: lessonKey })
+          supabase.from("lesson_progress").upsert(
+            { user_id: userId, lesson_key: lessonKey },
+            { onConflict: "user_id,lesson_key" }
+          )
         );
       }
     } catch (err) {
       console.error("[progress] save failed:", err);
     }
-  }, [userId]);
+  }, [userId, setBoth]);
 
   return (
     <ProgressContext.Provider value={{ completed, signedIn: !!userId, toggleComplete }}>
