@@ -43,6 +43,21 @@ export function useEditScope() {
   return useContext(EditScopeContext);
 }
 
+// ── Preview mode ──────────────────────────────────────────────────────────────
+// When on, an editor's edit permissions read as false so the page renders exactly
+// as a reader sees it (markdown formatted, no edit affordances). Access/gating
+// uses the real permissions instead, so previewing a draft still shows content.
+
+const PreviewModeContext = createContext(false);
+
+export function PreviewModeProvider({ value, children }: { value: boolean; children: React.ReactNode }) {
+  return createElement(PreviewModeContext.Provider, { value }, children);
+}
+
+export function usePreviewMode() {
+  return useContext(PreviewModeContext);
+}
+
 // site_content keys holding the edit-access username lists
 export function lessonAclKey(lessonKey: string) { return `${lessonKey}_edit_acl`; }
 export function courseAclKey(courseId: string) { return `course_${courseId}_edit_acl`; }
@@ -127,9 +142,20 @@ export function usePermissions(scopeOverride?: EditScope) {
   const { profile } = useAuth();
   const { content } = useContentContext();
   const ctxScope = useEditScope();
+  const previewMode = useContext(PreviewModeContext);
   const scope = scopeOverride ?? ctxScope;
 
-  const can = (perm: Permission): boolean => evalPermission(profile, content, scope, perm);
+  // In preview mode, edit permissions read false so the UI renders as a reader's.
+  const can = (perm: Permission): boolean => (previewMode ? false : evalPermission(profile, content, scope, perm));
+  // `canReal` ignores preview mode — for access/gating that must not be suppressed.
+  const canReal = (perm: Permission): boolean => evalPermission(profile, content, scope, perm);
 
-  return { can, isAdmin: !!profile?.is_admin, scope };
+  return {
+    can,
+    canReal,
+    isAdmin: previewMode ? false : !!profile?.is_admin,
+    isAdminReal: !!profile?.is_admin,
+    previewMode,
+    scope,
+  };
 }

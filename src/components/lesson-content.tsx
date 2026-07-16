@@ -4,11 +4,11 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronLeft, ChevronRight, ChevronUp, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check, Copy, Lock } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check, Copy, Lock, Eye, Pencil } from "lucide-react";
 import { useProgress } from "@/components/progress-provider";
 import { Editable } from "@/components/editable-text";
 import { useContentContext } from "@/components/content-provider";
-import { usePermissions, EditScopeProvider, evalPermission, lessonAclKey, type EditScope } from "@/hooks/use-permissions";
+import { usePermissions, EditScopeProvider, PreviewModeProvider, evalPermission, lessonAclKey, type EditScope } from "@/hooks/use-permissions";
 import { useAuth } from "@/components/auth-provider";
 import { useCourseStructure, getEffectiveStatus, parseJSON } from "@/hooks/use-course-structure";
 import { getStaticLesson } from "@/lib/courses/foundations-data";
@@ -830,11 +830,11 @@ export function EditAccessManager({
   grantScope?: EditScope;
 }) {
   const { content, updateContent } = useContentContext();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, previewMode } = usePermissions();
   const { profile } = useAuth();
   const canGrant =
     isAdmin || (!!grantScope && evalPermission(profile, content, grantScope, "manage_access"));
-  if (!canGrant) return null;
+  if (previewMode || !canGrant) return null;
 
   let users: string[] = [];
   try { users = JSON.parse(content[aclKey] ?? "[]"); } catch { users = []; }
@@ -961,14 +961,21 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
   const { content, updateContent } = useContentContext();
   // Permissions here are scoped to THIS lesson — a role-holder can act only if
   // an admin granted them this lesson (or its whole course).
-  const { can, isAdmin } = usePermissions({ type: "lesson", courseId, lessonKey });
-  const canEdit = can("edit_content");
-  const canManage = can("manage_sections");
-  const canPublish = can("manage_lessons");
-  // Seeing a draft/soon lesson: publish rights, view_drafts (assistants), or
-  // edit access to THIS lesson (editors granted it). Scoping keeps editors from
-  // reaching drafts they aren't granted.
-  const canViewDrafts = canPublish || can("view_drafts") || canEdit;
+  const { canReal, isAdminReal } = usePermissions({ type: "lesson", courseId, lessonKey });
+
+  // "Preview as reader" — an editor can flip this to see the page exactly as a
+  // reader would (markdown formatted, no edit UI). Local to this lesson page.
+  const [previewMode, setPreviewMode] = useState(false);
+
+  // Affordance flags respect the preview toggle; the nested subtree gets the
+  // preview flag via PreviewModeProvider so every Editable renders read-only too.
+  const canEdit = !previewMode && canReal("edit_content");
+  const canManage = !previewMode && canReal("manage_sections");
+  const canPublish = !previewMode && canReal("manage_lessons");
+
+  // Real (preview-independent) — for access gating and the toggle's own visibility
+  const canViewDrafts = isAdminReal || canReal("manage_lessons") || canReal("view_drafts") || canReal("edit_content");
+  const canEditHere = isAdminReal || canReal("edit_content") || canReal("manage_sections");
   const { allLessons } = useCourseStructure(courseId);
 
   // Static lesson data for fallbacks (only exists for foundations lessons)
@@ -1208,16 +1215,32 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
 
   return (
     <EditScopeProvider scope={{ type: "lesson", courseId, lessonKey }}>
+    <PreviewModeProvider value={previewMode}>
     <div className="max-w-2xl mx-auto px-6 md:px-10 py-10 md:py-14">
 
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] mb-10" aria-label="Breadcrumb">
-        <Link href="/curriculum" className="hover:text-[var(--text)] transition-colors">Curriculum</Link>
-        <span className="opacity-30">/</span>
-        <Link href={`/courses/${courseSlug}`} className="hover:text-[var(--text)] transition-colors">{courseTitle}</Link>
-        <span className="opacity-30">/</span>
-        <span style={{ color: "var(--text)" }}>{content[`${lk}_title`] ?? staticLesson?.titleFallback}</span>
-      </nav>
+      {/* Breadcrumb + preview toggle */}
+      <div className="flex items-center justify-between gap-3 mb-10">
+        <nav className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-[var(--text-muted)] min-w-0" aria-label="Breadcrumb">
+          <Link href="/curriculum" className="hover:text-[var(--text)] transition-colors">Curriculum</Link>
+          <span className="opacity-30">/</span>
+          <Link href={`/courses/${courseSlug}`} className="hover:text-[var(--text)] transition-colors truncate">{courseTitle}</Link>
+          <span className="opacity-30">/</span>
+          <span className="truncate" style={{ color: "var(--text)" }}>{content[`${lk}_title`] ?? staticLesson?.titleFallback}</span>
+        </nav>
+        {canEditHere && (
+          <button
+            onClick={() => setPreviewMode((v) => !v)}
+            title={previewMode ? "Return to editing" : "Preview how readers see this page"}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest cursor-pointer rounded-[var(--radius-button)] transition-colors"
+            style={previewMode
+              ? { background: "var(--accent)", color: "#fff", border: "1px solid var(--accent)" }
+              : { color: "var(--text-muted)", border: "1px solid var(--border-strong)" }}
+          >
+            {previewMode ? <Pencil size={12} /> : <Eye size={12} />}
+            {previewMode ? "Editing" : "Preview"}
+          </button>
+        )}
+      </div>
 
       {/* Title + status badge */}
       <div className="flex items-start gap-3 mb-5">
@@ -1615,6 +1638,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
         ) : <div />}
       </div>
     </div>
+    </PreviewModeProvider>
     </EditScopeProvider>
   );
 }
