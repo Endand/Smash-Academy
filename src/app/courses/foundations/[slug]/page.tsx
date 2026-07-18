@@ -105,7 +105,7 @@ export default async function LessonPage({ params }: Props) {
       <EditScopeProvider scope={{ type: "course", courseId: "foundations" }}>
       <div className="pt-14 min-h-screen flex flex-col md:flex-row">
         <LessonSidebar currentSlug={slug} courseId="foundations" />
-        <main className="flex-1 min-w-0">
+        <main className="flex-1 min-w-0 overflow-x-clip">
           <LessonContent lessonKey={lessonKey} slug={slug} courseId="foundations" lastUpdated={lastUpdated} />
         </main>
       </div>
