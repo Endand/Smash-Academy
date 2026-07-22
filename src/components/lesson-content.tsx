@@ -53,7 +53,7 @@ function MoveBtns({ onMove, canUp, canDown }: { onMove: (dir: -1 | 1) => void; c
         onClick={() => onMove(-1)}
         disabled={!canUp}
         title="Move up"
-        className="shrink-0 w-5 h-5 rounded flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-20 disabled:cursor-default"
+        className="shrink-0 w-5 h-5 rounded flex items-center justify-center cursor-pointer opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity disabled:opacity-20 disabled:cursor-default"
         style={btnStyle}
       >
         <ChevronUp size={12} />
@@ -62,7 +62,7 @@ function MoveBtns({ onMove, canUp, canDown }: { onMove: (dir: -1 | 1) => void; c
         onClick={() => onMove(1)}
         disabled={!canDown}
         title="Move down"
-        className="shrink-0 w-5 h-5 rounded flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-20 disabled:cursor-default"
+        className="shrink-0 w-5 h-5 rounded flex items-center justify-center cursor-pointer opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity disabled:opacity-20 disabled:cursor-default"
         style={btnStyle}
       >
         <ChevronDown size={12} />
@@ -71,15 +71,36 @@ function MoveBtns({ onMove, canUp, canDown }: { onMove: (dir: -1 | 1) => void; c
   );
 }
 
-function RemoveBtn({ onClick, title = "Remove" }: { onClick: () => void; title?: string }) {
+// Two-click delete: first click arms it (shows a check + "confirm?" tooltip),
+// second click within 3s actually removes. Prevents one-tap accidents.
+export function RemoveBtn({
+  onClick, title = "Remove", size = "w-5 h-5", vis = "opacity-100 md:opacity-0 md:group-hover:opacity-100",
+}: {
+  onClick: () => void;
+  title?: string;
+  size?: string;
+  vis?: string;
+}) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disarm = () => { if (timer.current) clearTimeout(timer.current); setArmed(false); };
+  const handle = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (armed) { disarm(); onClick(); return; }
+    setArmed(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setArmed(false), 3000);
+  };
   return (
     <button
-      onClick={onClick}
-      title={title}
-      className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity hover:brightness-110"
+      onClick={handle}
+      onMouseLeave={disarm}
+      title={armed ? "Click again to confirm removal" : title}
+      className={`shrink-0 ${size} ${vis} rounded-full flex items-center justify-center cursor-pointer transition-opacity hover:brightness-110`}
       style={{ background: "#ed4245", border: "1px solid #ed4245", color: "#fff" }}
     >
-      <X size={11} strokeWidth={2.5} />
+      {armed ? <Check size={11} strokeWidth={3} /> : <X size={11} strokeWidth={2.5} />}
     </button>
   );
 }
@@ -405,7 +426,7 @@ function BlockRenderer({
   const caption = content[`${prefix}_caption`] ?? "";
 
   const controls = canManage ? (
-    <div className="absolute left-full top-0 ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center gap-1">
+    <div className="absolute top-1 right-1 md:top-0 md:left-full md:right-auto md:ml-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10 flex items-center gap-1">
       <MoveBtns onMove={onMove} canUp={canMoveUp} canDown={canMoveDown} />
       <RemoveBtn onClick={onRemove} title={`Remove ${block.type} block`} />
     </div>
@@ -1420,7 +1441,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
           return (
             <section key={i} id={`section-${i}`} className="group relative" style={{ scrollMarginTop: "5rem" }}>
               {canManage && (
-                <div className="absolute left-full top-0 ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center gap-1">
+                <div className="absolute top-1 right-1 md:top-0 md:left-full md:right-auto md:ml-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10 flex items-center gap-1">
                   <MoveBtns onMove={(dir) => moveSection(i, dir)} canUp={secIdx > 0} canDown={secIdx < orderedSections.length - 1} />
                   <RemoveBtn onClick={() => deleteSection(i)} title="Remove section" />
                 </div>
@@ -1460,7 +1481,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
                   return (
                     <div key={itemId} className="group/p relative">
                       {canManage && (
-                        <div className="absolute left-full top-0 ml-1.5 opacity-0 group-hover/p:opacity-100 transition-opacity z-10 flex items-center gap-1">
+                        <div className="absolute top-1 right-1 md:top-0 md:left-full md:right-auto md:ml-1.5 opacity-100 md:opacity-0 md:group-hover/p:opacity-100 transition-opacity z-10 flex items-center gap-1">
                           <MoveBtns onMove={(dir) => moveItem(itemId, dir)} canUp={canUp} canDown={canDown} />
                           <RemoveBtn onClick={() => deleteParag(i, j)} title="Remove paragraph" />
                         </div>
@@ -1487,7 +1508,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
               {(def?.note || content[`${lk}_s${i}_note`]) && content[`${lk}_s${i}_note_deleted`] !== "1" && (
                 <div className="group/note relative mt-5">
                   {canManage && (
-                    <div className="absolute left-full top-0 ml-1.5 opacity-0 group-hover/note:opacity-100 transition-opacity z-10">
+                    <div className="absolute top-1 right-1 md:top-0 md:left-full md:right-auto md:ml-1.5 opacity-100 md:opacity-0 md:group-hover/note:opacity-100 transition-opacity z-10">
                       <RemoveBtn onClick={() => updateContent(`${lk}_s${i}_note_deleted`, "1")} title="Remove callout" />
                     </div>
                   )}
@@ -1597,7 +1618,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
             {orderedKCItems.map(({ i, defQ, defA }, displayIdx) => (
               <div key={i} className="group relative">
                 {canManage && (
-                  <div className="absolute left-full top-0 ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center gap-1">
+                  <div className="absolute top-1 right-1 md:top-0 md:left-full md:right-auto md:ml-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10 flex items-center gap-1">
                     <MoveBtns onMove={(dir) => moveKCItem(i, dir)} canUp={displayIdx > 0} canDown={displayIdx < orderedKCItems.length - 1} />
                     <RemoveBtn onClick={() => deleteKCItem(i)} title="Remove question" />
                   </div>

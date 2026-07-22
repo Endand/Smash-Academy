@@ -153,7 +153,7 @@ function CourseCard({
           <button
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
             title="Remove course"
-            className="w-5 h-5 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity hover:brightness-110"
+            className="w-5 h-5 rounded-full flex items-center justify-center cursor-pointer opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:brightness-110"
             style={{ background: "#ed4245", border: "1px solid #ed4245", color: "#fff" }}
           >
             <X size={11} strokeWidth={2.5} />

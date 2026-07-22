@@ -3,13 +3,13 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Plus, X, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { Plus, ChevronDown, ChevronUp, Check } from "lucide-react";
 import { useProgress } from "@/components/progress-provider";
 import { Editable } from "@/components/editable-text";
 import { EditableIcon } from "@/components/editable-icon";
 import { useContentContext } from "@/components/content-provider";
 import { useAuth } from "@/components/auth-provider";
-import { EditAccessManager } from "@/components/lesson-content";
+import { EditAccessManager, RemoveBtn } from "@/components/lesson-content";
 import { usePermissions, EditScopeProvider, canSeeDrafts, hasAnyEditAccessInCourse, courseAclKey } from "@/hooks/use-permissions";
 import {
   useCourseStructure,
@@ -156,7 +156,7 @@ function LessonRow({
       )}
       <StatusControl lessonKey={lesson.lessonKey} hasStaticContent={lesson.hasStaticContent} />
       {canCurriculum && (
-        <span className="flex items-center gap-0.5 shrink-0 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="flex items-center gap-0.5 shrink-0 ml-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
           <button
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMove(-1); }}
             disabled={!canMoveUp}
@@ -175,14 +175,7 @@ function LessonRow({
           >
             <ChevronDown size={9} />
           </button>
-          <button
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
-            title="Remove lesson"
-            className="w-4 h-4 rounded-full flex items-center justify-center cursor-pointer hover:brightness-110"
-            style={{ background: "#ed4245", border: "1px solid #ed4245", color: "#fff" }}
-          >
-            <X size={10} strokeWidth={2.5} />
-          </button>
+          <RemoveBtn onClick={onRemove} title="Remove lesson" size="w-4 h-4" vis="" />
         </span>
       )}
     </div>
@@ -500,7 +493,7 @@ export function CourseOverview({ courseId }: { courseId: string }) {
               />
               <div className="h-px flex-1 bg-[var(--border-color)]" />
               {canCurriculum && (
-                <span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/section:opacity-60 hover:!opacity-100 transition-opacity">
+                <span className="flex items-center gap-0.5 shrink-0 opacity-100 md:opacity-0 md:group-hover/section:opacity-60 md:hover:!opacity-100 transition-opacity">
                   <button
                     onClick={() => moveSection(section.sectionId, -1)}
                     disabled={si === 0}
@@ -519,14 +512,7 @@ export function CourseOverview({ courseId }: { courseId: string }) {
                   >
                     <ChevronDown size={9} />
                   </button>
-                  <button
-                    onClick={() => removeSection(section)}
-                    title="Remove section"
-                    className="w-4 h-4 rounded-full flex items-center justify-center cursor-pointer hover:brightness-110"
-                    style={{ background: "#ed4245", border: "1px solid #ed4245", color: "#fff" }}
-                  >
-                    <X size={10} strokeWidth={2.5} />
-                  </button>
+                  <RemoveBtn onClick={() => removeSection(section)} title="Remove section" size="w-4 h-4" vis="" />
                 </span>
               )}
             </div>
