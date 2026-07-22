@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ChevronLeft, ChevronRight, ChevronUp, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check, Copy, Lock, Eye, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, Plus, X, ChevronDown, Code, Image as ImageIcon, Quote, Check, Copy, Lock, Eye, Pencil, Video } from "lucide-react";
 import { useProgress } from "@/components/progress-provider";
 import { Editable } from "@/components/editable-text";
 import { useContentContext } from "@/components/content-provider";
@@ -205,7 +205,18 @@ function HighlightedCode({ code, lang }: { code: string; lang: string }) {
 
 // ── Rich content block renderer ───────────────────────────────────────────────
 
-type BlockType = "text" | "code" | "image" | "quote";
+type BlockType = "text" | "code" | "image" | "quote" | "video";
+
+// Parse a YouTube/Vimeo URL into a safe embed URL. The embed is rebuilt from the
+// extracted id (never the raw input), so arbitrary iframe srcs can't be injected.
+function videoEmbed(url: string): string | null {
+  const u = url.trim();
+  const yt = u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`;
+  const vimeo = u.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`;
+  return null;
+}
 
 interface Block {
   j: number;
@@ -508,6 +519,59 @@ function BlockRenderer({
     );
   }
 
+  if (block.type === "video") {
+    const embed = videoEmbed(blockContent);
+    return (
+      <div className="group relative">
+        {controls}
+        {canEdit && (
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-mono text-[9px] uppercase tracking-widest opacity-40" style={{ color: "var(--text-muted)" }}>
+              Video URL:
+            </span>
+            <Editable
+              as="span"
+              contentKey={`${prefix}_content`}
+              fallback="https://youtube.com/watch?v=…"
+              className="font-mono text-[10px] flex-1 truncate"
+              style={{ color: "var(--text-muted)" }}
+            />
+          </div>
+        )}
+        {embed ? (
+          <figure>
+            <div className="w-full aspect-video overflow-hidden rounded-[var(--radius-card)]" style={{ border: "1px solid var(--border-color)", background: "#000" }}>
+              <iframe
+                src={embed}
+                title={caption || "Video"}
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+                loading="lazy"
+                referrerPolicy="strict-origin-when-cross-origin"
+              />
+            </div>
+            {(caption || canEdit) && (
+              <figcaption className="text-center mt-2 text-[12px]" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
+                <Editable as="span" contentKey={`${prefix}_caption`} fallback="Video caption (optional)" />
+              </figcaption>
+            )}
+          </figure>
+        ) : (
+          <div
+            className="flex flex-col items-center justify-center gap-2 py-10 rounded-[var(--radius-card)]"
+            style={{ border: "1px dashed var(--border-strong)", color: "var(--text-muted)", opacity: 0.5 }}
+          >
+            <Video size={24} strokeWidth={1} />
+            {canEdit && blockContent && (
+              <span className="text-[11px]">Paste a YouTube or Vimeo link above</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (block.type === "quote") {
     return (
       <div className="group relative">
@@ -547,6 +611,7 @@ function AddBlockMenu({
     { type: "text", label: "Paragraph", icon: <span className="font-mono text-[10px]">¶</span> },
     { type: "code", label: "Code Block", icon: <Code size={11} /> },
     { type: "image", label: "Image", icon: <ImageIcon size={11} /> },
+    { type: "video", label: "Video", icon: <Video size={11} /> },
     { type: "quote", label: "Quote", icon: <Quote size={11} /> },
   ];
 
@@ -1079,6 +1144,7 @@ export function LessonContent({ lessonKey, slug, courseId = "foundations", lastU
     if (type === "text") updateContent(`${lk}_s${si}_blk${j}_content`, "New paragraph…");
     if (type === "code") { updateContent(`${lk}_s${si}_blk${j}_content`, "// code here"); updateContent(`${lk}_s${si}_blk${j}_lang`, "plaintext"); }
     if (type === "image") updateContent(`${lk}_s${si}_blk${j}_content`, "");
+    if (type === "video") updateContent(`${lk}_s${si}_blk${j}_content`, "");
     if (type === "quote") updateContent(`${lk}_s${si}_blk${j}_content`, "Quote text here…");
   };
   const deleteBlock = (si: number, j: number) => updateContent(`${lk}_s${si}_blk${j}_deleted`, "1");
